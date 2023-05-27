@@ -1,0 +1,5 @@
+FROM php:fpm
+RUN apt-get update && apt-get install -y \
+		libxml2-dev \
+	&& docker-php-ext-install -j$(nproc) soap \
+    && docker-php-ext-install pdo_mysql

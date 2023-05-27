@@ -1,0 +1,34 @@
+services:
+  dev:
+    image: nginx
+    ports:
+      - 4242:80
+    volumes:
+      - ../:/var/www/antragsgruen
+      - ./nginx.conf:/etc/nginx/conf.d/antragsblau.conf
+      - ./logs:/var/log/nginx/
+    depends_on:
+      - db
+      - php
+      - redis
+  php:
+    build: .
+    #    image: php:fpm
+    # command: /usr/local/bin/docker-php-ext-pdo_mysql && /start.sh
+    volumes:
+      - ../:/var/www/antragsgruen
+  db:
+    image: mariadb
+    restart: always
+    ports:
+      - 33306:3306
+    volumes:
+      - ./database:/var/lib/mysql
+    environment:
+      MARIADB_ROOT_PASSWORD: password
+  redis:
+    image: redis
+    ports:
+      - 63799:6379
+    volumes:
+      - ./redis:/data

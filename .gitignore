@@ -25,3 +25,6 @@ npm-debug.log
 /web/updates/
 /web/assets/*
 components/fpdi
+docker/database
+docker/logs
+docker/redis
