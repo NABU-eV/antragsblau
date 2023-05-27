@@ -5,7 +5,6 @@ vendor
 runtime
 local
 dist
-simplesaml
 config/config.json
 config/config.*.json
 !config/config.template.json
