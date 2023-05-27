@@ -45,7 +45,11 @@
     "tecnickcom/tcpdf": "^6.3",
     "tijsverkoyen/css-to-inline-styles": "^2.2.0",
     "yiisoft/yii2": "~2.0.15",
-    "yiisoft/yii2-authclient": "^2.2.4"
+    "yiisoft/yii2-authclient": "^2.2.4",
+    "simplesamlphp/simplesamlphp": "^2.0",
+    "predis/predis": "^2.1",
+    "yiisoft/yii2-redis": "^2.0",
+    "vlucas/phpdotenv": "^5.5"
   },
   "require-dev": {
     "codeception/codeception": "^4.0.0",
@@ -63,7 +67,13 @@
   "autoload": {
     "psr-4": {
       "setasign\\FpdiPdfParser\\": "components/fpdi/src/"
-    }
+    },
+    "classmap": [
+      "plugins/antragsblau_saml/config/Env.php"
+    ],
+    "files": [
+      "plugins/antragsblau_saml/helpers.php"
+    ]
   },
   "suggest": {
     "yiisoft/yii2-redis": "Allows using redis for caching",
