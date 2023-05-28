@@ -9,9 +9,9 @@
  */
 
 $metadata[env('SAML2_IDP')] = [
-    'certificate'           => 'keycloak.crt',
-    'signature.privatekey'  => 'keycloak.pem',
-    'signature.certificate' => 'keycloak.crt',
+    'certificate'           => env('SAML2_SIGN_CERT_FILE'),
+    'signature.privatekey'  => env('SAML2_SIGN_PRIVATE_KEY_FILE'),
+    'signature.certificate' => env('SAML2_SIGN_CERT_FILE'),
     'SingleSignOnService'   => [
         [
             'Binding'  => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',
@@ -30,6 +30,13 @@ $metadata[env('SAML2_IDP')] = [
         [
             'Binding'  => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect',
             'Location' => env('SAML2_IDP_SLO'),
+        ],
+    ],
+    'ArtifactResolutionService' => [
+        [
+            'Binding'  => 'urn:oasis:names:tc:SAML:2.0:bindings:SOAP',
+            'Location' => env('SAML2_IDP_ARS'),
+            'index'    => 0,
         ],
     ],
     'NameIDFormats'         => 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress',
