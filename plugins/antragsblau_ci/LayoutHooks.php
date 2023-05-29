@@ -10,15 +10,20 @@ class LayoutHooks extends Hooks
 {
     public function beforePage(string $before): string
     {
-        return '<div class="header_wrap"><div class="container">
-                    <div class="logo">
-                        <a href="/" class="homeLinkLogo">
-                            <span class="sr-only">Zur Startseite</span>
-                            <span class="logoImg"></span>
-                        </a>
-                    </div>'
-                    .$this->getMenu().
-                '</div></div>';
+        return '<div class="header_wrap">
+                    <div class="container">
+                        <div class="logo">
+                            <a href="/" class="homeLinkLogo">
+                                <span class="sr-only">Zur Startseite</span>
+                                <span class="logoImg"></span>
+                            </a>
+                        </div>'
+                        .$this->getMenu().
+                    '</div>
+               </div>
+               <div class="breadcrumb_wrap"><div class="container">'
+                    .Layout::breadcrumbs().
+               '</div></div>';
     }
     public function beginPage(string $before): string
     {
@@ -48,7 +53,8 @@ class LayoutHooks extends Hooks
 
     public function beforeContent(string $before): string
     {
-        return "";
+        return '';
+//        return '<div class="row">'.Layout::breadcrumbs().'</div>';
     }
 
     private function getMenu() {
@@ -60,7 +66,7 @@ class LayoutHooks extends Hooks
             '<div class="navigation nav-fallback clearfix">';
         $out .= Layout::getStdNavbarHeader();
         $out .= '</div></nav>';
-        $out .= Layout::breadcrumbs();
+//        $out .= Layout::breadcrumbs();
         $out .= '</div></section>';
 
         if ($this->consultation) {
@@ -74,6 +80,31 @@ class LayoutHooks extends Hooks
                 $out .= '</div>';
             }
         }
+        return $out;
+    }
+
+    public function breadcrumbs(string $before): string
+    {
+        $out             = '';
+        $showBreadcrumbs = (!$this->consultation || !$this->consultation->site || $this->consultation->site->getSettings()->showBreadcrumbs);
+        if (is_array($this->layout->breadcrumbs) && $showBreadcrumbs) {
+            $out .= '<nav aria-label="' . \Yii::t('base', 'aria_breadcrumb') . '"><ol class="breadcrumb">';
+            foreach ($this->layout->breadcrumbs as $link => $name) {
+                if ($link === '' || is_numeric($link)) {
+                    $out .= '<li>' . Html::encode($name) . '</li>';
+                } else {
+                    if ($link === UrlHelper::homeUrl()) {
+                        // We have enough links to the home page already, esp. the logo just a few pixels away. This would be confusing for screenreaders.
+                        $out .= '<li><span class="pseudoLink" data-href="' . Html::encode($link) . '"><span style="font-size: 13px;" class="glyphicon glyphicon-home" aria-hidden="true"></span>&nbsp;' . Html::encode($name) . '</span></li>';
+                    } else {
+                        $label = str_replace('%TITLE%', $name, \Yii::t('base', 'aria_bc_back'));
+                        $out   .= '<li>' . Html::a(Html::encode($name), $link, ['aria-label' => $label]) . '</li>';
+                    }
+                }
+            }
+            $out .= '</ol></nav>';
+        }
+
         return $out;
     }
 
