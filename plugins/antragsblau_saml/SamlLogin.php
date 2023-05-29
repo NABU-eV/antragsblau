@@ -19,7 +19,6 @@ class SamlLogin implements LoginProviderInterface
     private const PARAM_USERNAME = 'uid';
     private const PARAM_GIVEN_NAME = 'givenName';
     private const PARAM_FAMILY_NAME = 'sn';
-    private const PARAM_ORGANIZATION = 'membershipOrganizationKey';
 
     public function getId(): string
     {
@@ -39,13 +38,9 @@ class SamlLogin implements LoginProviderInterface
         ]);
     }
 
-    public function isCurrentUserAuthenticated(): bool
-    {
-        $samlClient = new Simple('nabu-sp');
-
-        return $samlClient->isAuthenticated();
-    }
-
+    /**
+     * @throws Exception
+     */
     public function performLoginAndReturnUser(): User
     {
         $samlClient = new Simple('nabu-sp');
