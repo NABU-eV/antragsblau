@@ -31,7 +31,7 @@ $config = [
      * external url, no matter where you come from (direct access or via the
      * reverse proxy).
      */
-    'baseurlpath' => 'https://antragsblau.local.itgeek.de/nabusaml/',
+    'baseurlpath' => env("BASE_URL_PATH"),
 
     /*
      * The 'application' configuration array groups a set configuration options
@@ -53,7 +53,7 @@ $config = [
          * need to compute the right URLs yourself and pass them dynamically
          * to SimpleSAMLphp's API.
          */
-        'baseURL' => 'https://antragsblau.local.itgeek.de',
+        'baseURL' => env("BASE_URL"),
     ],
 
     /*
