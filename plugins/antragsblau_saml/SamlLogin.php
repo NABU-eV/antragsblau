@@ -69,7 +69,7 @@ class SamlLogin implements LoginProviderInterface
         $givenname = (isset($params[self::PARAM_GIVEN_NAME]) ? $params[self::PARAM_GIVEN_NAME][0] : '');
         $familyname = (isset($params[self::PARAM_FAMILY_NAME]) ? $params[self::PARAM_FAMILY_NAME][0] : '');
         $username = $params[self::PARAM_USERNAME][0];
-        $groups = $params[self::PARAM_GROUPS];
+        $groups = $params[self::PARAM_GROUPS] ?? ['Teilnehmer*in'];
         $auth = $this->usernameToAuth($username);
 
         /** @var User|null $user */
