@@ -76,7 +76,7 @@ $config = yii\helpers\ArrayHelper::merge(
                 ]
             ],
             'assetManager'         => [
-                'appendTimestamp' => false,
+                'appendTimestamp' => true,
             ],
         ],
     ]
