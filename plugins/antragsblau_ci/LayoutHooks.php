@@ -8,11 +8,22 @@ use yii\helpers\Html;
 
 class LayoutHooks extends Hooks
 {
+    public function beforePage(string $before): string
+    {
+        return '<div class="header_wrap"><div class="container">
+                    <div class="logo">
+                        <a href="/" class="homeLinkLogo">
+                            <span class="sr-only">Zur Startseite</span>
+                            <span class="logoImg"></span>
+                        </a>
+                    </div>'
+                    .$this->getMenu().
+                '</div></div>';
+    }
     public function beginPage(string $before): string
     {
         return '';
     }
-
     public function renderSidebar(string $before): string
     {
         $str = $this->layout->preSidebarHtml;
@@ -27,40 +38,30 @@ class LayoutHooks extends Hooks
     }
     public function getStdNavbarHeader(string $before): string
     {
-
         return $before;
     }
 
-    // public function logoRow(string $before): string
-    // {
-    //     $out = '<header class="row logo" role="banner">' .
-    //         '<p id="logo"><a href="' . Html::encode(UrlHelper::homeUrl()) . '" class="homeLinkLogo" title="' .
-    //         Html::encode(\Yii::t('base', 'home_back')) . '">' .
-    //         $this->layout->getLogoStr() .
-    //         '</a></p>' .
-    //         '<div class="hgroup">' .
-    //         '<div id="site-title"><span>' .
-    //         '<a href="' . Html::encode(UrlHelper::homeUrl()) . '" rel="home">' . \Yii::t('antragsblau_ci', 'antragsblau') . '</a>' .
-    //         '</span></div>';
-    //     if ($this->consultation) {
-    //         $out .= '<div id="site-description">' . Html::encode($this->consultation->title) . '</div>';
-    //     }
-    //     $out .= '</div>' .
-    //         '</header>';
-
-    //     return $out;
-    // }
+     public function logoRow(string $before): string
+     {
+         return '';
+     }
 
     public function beforeContent(string $before): string
     {
-        $out = '<section class="navwrap">' .
+        return "";
+    }
+
+    private function getMenu() {
+        $out = '
+            <section class="navwrap">' .
+            '<div>' .
             '<nav role="navigation" class="pos" id="mainmenu"><h6 class="unsichtbar">' .
             \Yii::t('base', 'menu_main') . ':</h6>' .
             '<div class="navigation nav-fallback clearfix">';
         $out .= Layout::getStdNavbarHeader();
         $out .= '</div></nav>';
         $out .= Layout::breadcrumbs();
-        $out .= '</section>';
+        $out .= '</div></section>';
 
         if ($this->consultation) {
             $warnings = array_merge(
@@ -73,7 +74,6 @@ class LayoutHooks extends Hooks
                 $out .= '</div>';
             }
         }
-
         return $out;
     }
 
