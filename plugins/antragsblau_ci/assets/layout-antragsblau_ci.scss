@@ -148,7 +148,6 @@ body {
   flex: 1;
 }
 
-
 .navwrap {
   margin-right: -15px;
   margin-left: 116px;
@@ -473,4 +472,8 @@ footer.footer {
       width: 102px;
     }
   }
+}
+
+#loginSamlHint, .login_saml .privacyHint{
+  font-size: 16px;
 }
