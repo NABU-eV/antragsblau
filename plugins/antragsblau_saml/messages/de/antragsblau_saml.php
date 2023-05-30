@@ -3,10 +3,9 @@
 return [
     'login_action' => 'Mit NABU-Login anmelden',
     'login_title'  => 'NABU-Login',
-    'login_info'   => ' <strong>Hinweis:</strong> Hier wirst du auf eine Seite unter „https://login.nabu.de/” umgeleitet,
-            die vom NABU e.V betrieben wird.<br>Dort musst du dein Benutzer*innenname/Passwort des NABUS
-            eingeben. Dein Passwort bleibt dabei geheim und wird <i>nicht</i> an Antragsblau übermittelt.
+    'login_info'   => ' <strong>Hinweis:</strong> Sie werden auf die Seite „https://login.nabu.de/” umgeleitet.
+            <br>Dort können Sie sich einloggen oder einen neuen Benutzer registrieren.
             <br><br>
-            <strong>Zugangsdaten vergessen?</strong> Klicke auf „{login_action}” und auf der folgenden Seite auf
+            <strong>Zugangsdaten vergessen?</strong> Klicken Sie auf auf „{login_action}” und dann auf
             „Passwort vergessen?”.',
 ];
