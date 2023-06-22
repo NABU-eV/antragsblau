@@ -1,3 +1,5 @@
+name: antragsblau
+
 services:
   dev:
     image: nginx
@@ -13,8 +15,6 @@ services:
       - redis
   php:
     build: .
-    #    image: php:fpm
-    # command: /usr/local/bin/docker-php-ext-pdo_mysql && /start.sh
     volumes:
       - ../:/var/www/antragsgruen
   db:
