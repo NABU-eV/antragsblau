@@ -5,7 +5,7 @@
 2. Run
    - `docker compose up -d`
 3. Create `antragsblau` database
-   - `docker exec docker-db-1 mysql -uroot -ppassword -e "CREATE DATABASE antragsblau;" `
+   - `docker exec antragsblau-db-1 mysql -uroot -ppassword -e "CREATE DATABASE antragsblau;" `
 4. Install composer and npm dependencies
    - `composer install --prefer-dist`
    - `npm install && npm build`
