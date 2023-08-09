@@ -2,9 +2,13 @@
 
 namespace app\plugins\antragsblau_ci;
 
+use app\components\RequestContext;
 use app\components\UrlHelper;
+use app\controllers\Base;
+use app\models\settings\AntragsgruenApp;
 use app\models\layoutHooks\{Hooks, Layout};
 use yii\helpers\Html;
+use yii\web\View;
 
 class LayoutHooks extends Hooks
 {
@@ -29,6 +33,27 @@ class LayoutHooks extends Hooks
     {
         return '';
     }
+    public function getAntragsgruenAd(string $before): string
+    {
+        return '';
+    }
+
+
+    public function favicons(string $before): string
+    {
+        /** @var Base $controller */
+        $controller = RequestContext::getWebApplication()->controller;
+        $assetBundle = reset($controller->view->assetBundles);
+        $faviconBase = $assetBundle->baseUrl;
+
+        return '<link rel="apple-touch-icon" sizes="180x180" href="' . $faviconBase . '/antragsblau-logo.png">
+<link rel="icon" type="image/png" sizes="32x32" href="' . $faviconBase . '/antragsblau-logo.png">
+<link rel="icon" type="image/png" sizes="16x16" href="' . $faviconBase . '/antragsblau-logo.png">
+<link rel="manifest" href="' . $faviconBase . '/site.webmanifest">
+<link rel="mask-icon" href="' . $faviconBase . '/safari-pinned-tab.svg" color="#3bb030">
+<meta name="theme-color" content="#ffffff">';
+    }
+
     public function renderSidebar(string $before): string
     {
         $str = $this->layout->preSidebarHtml;
@@ -41,6 +66,7 @@ class LayoutHooks extends Hooks
 
         return $str;
     }
+
     public function getStdNavbarHeader(string $before): string
     {
         return $before;

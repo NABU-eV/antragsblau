@@ -98,7 +98,7 @@ if ($showCreate || count($pinkButtonCreates) > 0) {
 $html = '<section class="sidebar-box" aria-labelledby="sidebarNewsTitle"><ul class="nav nav-list"><li class="nav-header" id="sidebarNewsTitle">' .
     Yii::t('con', 'news') . '</li>';
 
-$title = '<span class="fontello fontello-globe"></span>' . Yii::t('con', 'activity_log');
+$title = '<span class="glyphicon glyphicon-globe"></span>' . Yii::t('con', 'activity_log');
 $link  = UrlHelper::createUrl('consultation/activitylog');
 $html  .= '<li class="activitylog">' . Html::a($title, $link) . '</li>';
 
