@@ -35,7 +35,7 @@ if ($layout->fullScreen) {
     $bodyClasses[] = 'fullscreen';
 }
 
-$title = $layout->formatTitle($this->title ?? '');
+$title = $this->title;
 
 $this->beginPage();
 
