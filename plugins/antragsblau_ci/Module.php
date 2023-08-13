@@ -7,6 +7,12 @@ use yii\web\View;
 
 class Module extends ModuleBase
 {
+
+    public static function getProvidedTranslations(): array
+    {
+        return ['de'];
+    }
+
     public static function getProvidedLayouts(?View $view = null): array
     {
         if ($view) {
@@ -18,10 +24,10 @@ class Module extends ModuleBase
 
         return [
             'std' => [
-                'title'       => 'Antragsblau CI',
-                'preview'     => $thumbBase . '/layout-preview-green.png',
-                'bundle'      => Assets::class,
-                'hooks'       => LayoutHooks::class,
+                'title'   => 'Antragsblau CI',
+                'preview' => $thumbBase . '/layout-preview-green.png',
+                'bundle'  => Assets::class,
+                'hooks'   => LayoutHooks::class,
                 // 'odtTemplate' => __DIR__ . '/OpenOffice-Template-Gruen.odt',
             ]
         ];
