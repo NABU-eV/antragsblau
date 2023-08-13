@@ -12,6 +12,7 @@ use yii\web\View;
 
 class LayoutHooks extends Hooks
 {
+
     public function beforePage(string $before): string
     {
         return '<div class="header_wrap">
@@ -22,17 +23,19 @@ class LayoutHooks extends Hooks
                                 <span class="logoImg"></span>
                             </a>
                         </div>'
-                        .$this->getMenu().
-                    '</div>
+            . $this->getMenu() .
+            '</div>
                </div>
                <div class="breadcrumb_wrap"><div class="container">'
-                    .Layout::breadcrumbs().
-               '</div></div>';
+            . Layout::breadcrumbs() .
+            '</div></div>';
     }
+
     public function beginPage(string $before): string
     {
         return '';
     }
+
     public function getAntragsgruenAd(string $before): string
     {
         return '';
@@ -49,7 +52,6 @@ class LayoutHooks extends Hooks
         return '<link rel="apple-touch-icon" sizes="180x180" href="' . $faviconBase . '/antragsblau-logo.png">
 <link rel="icon" type="image/png" sizes="32x32" href="' . $faviconBase . '/antragsblau-logo.png">
 <link rel="icon" type="image/png" sizes="16x16" href="' . $faviconBase . '/antragsblau-logo.png">
-<link rel="manifest" href="' . $faviconBase . '/site.webmanifest">
 <link rel="mask-icon" href="' . $faviconBase . '/safari-pinned-tab.svg" color="#3bb030">
 <meta name="theme-color" content="#ffffff">';
     }
@@ -72,10 +74,10 @@ class LayoutHooks extends Hooks
         return $before;
     }
 
-     public function logoRow(string $before): string
-     {
-         return '';
-     }
+    public function logoRow(string $before): string
+    {
+        return '';
+    }
 
     public function beforeContent(string $before): string
     {
@@ -83,7 +85,8 @@ class LayoutHooks extends Hooks
 //        return '<div class="row">'.Layout::breadcrumbs().'</div>';
     }
 
-    private function getMenu() {
+    private function getMenu()
+    {
         $out = '
             <section class="navwrap">' .
             '<div>' .
@@ -106,13 +109,14 @@ class LayoutHooks extends Hooks
                 $out .= '</div>';
             }
         }
+
         return $out;
     }
 
     public function breadcrumbs(string $before): string
     {
-        $out             = '';
-        $showBreadcrumbs = (!$this->consultation || !$this->consultation->site || $this->consultation->site->getSettings()->showBreadcrumbs);
+        $out = '';
+        $showBreadcrumbs = (! $this->consultation || ! $this->consultation->site || $this->consultation->site->getSettings()->showBreadcrumbs);
         if (is_array($this->layout->breadcrumbs) && $showBreadcrumbs) {
             $out .= '<nav aria-label="' . \Yii::t('base', 'aria_breadcrumb') . '"><ol class="breadcrumb">';
             foreach ($this->layout->breadcrumbs as $link => $name) {
@@ -124,7 +128,7 @@ class LayoutHooks extends Hooks
                         $out .= '<li><span class="pseudoLink" data-href="' . Html::encode($link) . '"><span style="font-size: 13px;" class="glyphicon glyphicon-home" aria-hidden="true"></span>&nbsp;' . Html::encode($name) . '</span></li>';
                     } else {
                         $label = str_replace('%TITLE%', $name, \Yii::t('base', 'aria_bc_back'));
-                        $out   .= '<li>' . Html::a(Html::encode($name), $link, ['aria-label' => $label]) . '</li>';
+                        $out .= '<li>' . Html::a(Html::encode($name), $link, ['aria-label' => $label]) . '</li>';
                     }
                 }
             }
@@ -147,6 +151,7 @@ class LayoutHooks extends Hooks
                 <span class="fa fa-search"></span> <span class="text">' . \Yii::t('antragsblau_ci', 'search') . '</span>
             </button>';
         $html .= Html::endForm();
+
         return $html;
     }
 }
