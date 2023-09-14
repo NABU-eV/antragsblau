@@ -29,15 +29,15 @@ document.addEventListener("DOMContentLoaded", () => {
             showScrollElement();
         }
     };
-    // Initial scroll button
-    toggleScrollBar();
+    // // Initial scroll button
+    // toggleScrollBar();
 
-    const resizeObserver = new ResizeObserver((entries) => toggleScrollBar());
-    resizeObserver.observe(document.body);
+    // const resizeObserver = new ResizeObserver((entries) => toggleScrollBar());
+    // resizeObserver.observe(document.body);
 
-    window.onresize = function (ev) {
-        toggleScrollBar();
-    };
+    // window.onresize = function (ev) {
+    //     toggleScrollBar();
+    // };
 
     window.onscroll = function (ev) {
         toggleScrollBar();
