@@ -33,6 +33,19 @@ class LayoutHooks extends Hooks
 
     public function beginPage(string $before): string
     {
+        $controller = RequestContext::getWebApplication()->controller;
+        if ($controller->id == 'amendment' && $controller->action->id == 'create') {
+            return '<div style="position: sticky;top: 55%;z-index: 1000;">
+                        <button type="button" name="scroll_down"
+                                class="btn btn-primary scrollToBottom hidden"
+                                style="position:absolute; right:-3%; color: #fff;background: #0069b4; border-color:#0069b4"
+                                >
+                        <span aria-hidden="true" class="glyphicon glyphicon-save"></span>
+                        Änderungsantrag abschließen
+                        </button>
+                    </div>';
+        }
+
         return '';
     }
 
