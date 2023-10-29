@@ -20,7 +20,7 @@ return [
     'sidebar_procedure'    => 'Verfahren',
     'proposed_procedure'   => 'Verfahrensvorschlag',
     'voting_results'       => 'Abstimmungsergebnisse',
-    'email_notifications'  => 'E-Mail-Benachrichtigungen',
+    'email_notifications'  => 'Benachrichtigungen',
     'activity_log'         => 'Aktivitäten',
     'feed_motions'         => 'Anträge',
     'feed_amendments'      => 'Änderungsanträge',

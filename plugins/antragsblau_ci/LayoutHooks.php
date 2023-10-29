@@ -40,7 +40,7 @@ class LayoutHooks extends Hooks
                                 class="btn btn-primary scrollToBottom hidden"
                                 style="position:absolute; right:-3%; color: #fff;background: #0069b4; border-color:#0069b4"
                                 >
-                        <span aria-hidden="true" class="glyphicon glyphicon-save"></span>
+                        <span aria-hidden="true" class="glyphicon glyphicon-send" style="padding-right:8px"></span>
                         Änderungsantrag abschließen
                         </button>
                     </div>';
@@ -78,6 +78,9 @@ class LayoutHooks extends Hooks
             $str .= '</div>';
         }
         $str .= $this->layout->postSidebarHtml;
+        $str = str_replace("glyphicon-bell", "glyphicon-envelope", $str);
+        $str = str_replace("glyphicon-scissors", "glyphicon-pencil", $str);
+        $str = str_replace("glyphicon-globe", "glyphicon-bell", $str);
 
         return $str;
     }

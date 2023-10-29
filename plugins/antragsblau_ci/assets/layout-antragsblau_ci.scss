@@ -505,3 +505,68 @@ footer.footer {
 #loginSamlHint, .login_saml .privacyHint{
   font-size: 16px;
 }
+
+@font-face {
+  font-family: 'icomoon';
+  src:  url('./fonts/icomoon.eot?wbuyia');
+  src:  url('./fonts/icomoon.eot?wbuyia#iefix') format('embedded-opentype'),
+    url('./fonts/icomoon.ttf?wbuyia') format('truetype'),
+    url('./fonts/icomoon.woff?wbuyia') format('woff'),
+    url('./fonts/icomoon.svg?wbuyia#icomoon') format('svg');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+[class^="icon-"], [class*=" icon-"] {
+  /* use !important to prevent issues with browser extensions that change fonts */
+  font-family: 'icomoon' !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+
+  /* Better Font Rendering =========== */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.icon-post_add:before {
+  content: "\e900";
+}
+.icon-smile:before {
+  content: "\e9e1";
+}
+.icon-sad:before {
+  content: "\e9e5";
+}
+
+.likes .btn-success .glyphicon, .likes .btn-alert .glyphicon {
+      /* use !important to prevent issues with browser extensions that change fonts */
+    font-family: 'icomoon' !important;
+    speak: never;
+    font-style: normal;
+    font-weight: normal;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+        /* Better Font Rendering =========== */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.glyphicon-thumbs-up {
+  color:#008143;
+&:before {
+    content: "\e9e2";
+  }
+}
+.glyphicon-thumbs-down {
+  &:before {
+    content: "\e9e6";
+    color: #dd052e;
+  }
+}
+
