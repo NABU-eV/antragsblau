@@ -3,7 +3,7 @@
 namespace app\controllers;
 
 use app\models\exceptions\{ApiResponseException, NotFound, Internal, ResponseException};
-use app\models\http\{ResponseInterface, RestApiExceptionResponse, RestApiResponse};
+use app\models\http\{HtmlResponse, RedirectResponse, ResponseInterface, RestApiExceptionResponse, RestApiResponse};
 use app\components\{ConsultationAccessPassword, HTMLTools, RequestContext, UrlHelper};
 use app\models\settings\{AntragsgruenApp, Layout, Privileges};
 use app\models\db\{Amendment, Consultation, Motion, Site, User};
@@ -67,7 +67,7 @@ class Base extends Controller
         $inInstaller = (get_class($this) === InstallationController::class);
 
         if ($appParams->siteSubdomain) {
-            if (strpos($appParams->siteSubdomain, 'xn--') === 0) {
+            if (str_starts_with($appParams->siteSubdomain, 'xn--')) {
                 HTMLTools::loadNetIdna2();
                 $idna = new \Net_IDNA2();
                 $subdomain = $idna->decode($appParams->siteSubdomain);
@@ -86,7 +86,7 @@ class Base extends Controller
                 $this->layoutParams->setLayout(Layout::getDefaultLayout());
             }
         } elseif (isset($params[1]['subdomain'])) {
-            if (strpos($params[1]['subdomain'], 'xn--') === 0) {
+            if (str_starts_with($params[1]['subdomain'], 'xn--')) {
                 HTMLTools::loadNetIdna2();
                 $idna = new \Net_IDNA2();
                 $subdomain = $idna->decode($params[1]['subdomain']);
@@ -125,18 +125,18 @@ class Base extends Controller
         }
         if (get_class($this) === PagesController::class && $action->id === 'file' && $this->consultation) {
             $logo = urldecode(basename($this->consultation->getSettings()->logoUrl));
-            if ($logo && isset($params[1]) && isset($params[1]['filename']) && $params[1]['filename'] === $logo) {
+            if (isset($params[1]['filename']) && $logo && $params[1]['filename'] === $logo) {
                 return true;
             }
             if (isset($this->site->getSettings()->getStylesheet()->backgroundImage)) {
                 $bg = urldecode(basename($this->site->getSettings()->getStylesheet()->backgroundImage));
-                if (isset($params[1]) && isset($params[1]['filename']) && $params[1]['filename'] === $bg) {
+                if (isset($params[1]['filename']) && $params[1]['filename'] === $bg) {
                     return true;
                 }
             }
         }
 
-        if ($this->testMaintenanceMode() || $this->testSiteForcedLogin() || $this->testConsultationPwd()) {
+        if ($this->testMaintenanceMode($action->id) || $this->testSiteForcedLogin() || $this->testConsultationPwd()) {
             return false;
         }
         return true;
@@ -229,12 +229,7 @@ class Base extends Controller
         return $this->isPostSet($name) || $this->isGetSet($name);
     }
 
-    /**
-     * @param string $name
-     * @param null|mixed $default
-     * @return mixed
-     */
-    public function getRequestValue($name, $default = null)
+    public function getRequestValue(string $name, mixed $default = null): mixed
     {
         $post = $this->getHttpRequest()->post();
         if (isset($post[$name])) {
@@ -247,11 +242,7 @@ class Base extends Controller
         return $default;
     }
 
-    /**
-     * @param mixed|null $default
-     * @return array|mixed|object
-     */
-    public function getPostValue(string $name, $default = null)
+    public function getPostValue(string $name, mixed $default = null): mixed
     {
         return $this->getHttpRequest()->post($name, $default);
     }
@@ -261,7 +252,7 @@ class Base extends Controller
         return $this->getHttpRequest()->post();
     }
 
-    public function renderContentPage(string $pageKey): string
+    public function renderContentPage(string $pageKey): HtmlResponse
     {
         if ($this->consultation) {
             $admin = User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CONTENT_EDIT, null);
@@ -269,13 +260,13 @@ class Base extends Controller
             $user  = User::getCurrentUser();
             $admin = ($user && in_array($user->id, $this->getParams()->adminUserIds));
         }
-        return $this->render(
+        return new HtmlResponse($this->render(
             '@app/views/pages/contentpage',
             [
                 'pageKey' => $pageKey,
                 'admin'   => $admin,
             ]
-        );
+        ));
     }
 
     /**
@@ -346,15 +337,22 @@ class Base extends Controller
     /**
      * @throws \yii\base\ExitException
      */
-    public function testMaintenanceMode(): bool
+    public function testMaintenanceMode(?string $actionId): bool
     {
         if ($this->consultation == null) {
+            return false;
+        }
+
+
+
+        if (get_class($this) === ConsultationController::class && $actionId === 'index') {
+            // On home, the actual error is shown on the regular page
             return false;
         }
         $settings = $this->consultation->getSettings();
         $admin = User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CONSULTATION_SETTINGS, null);
         if ($settings->maintenanceMode && !$admin) {
-            $this->redirect(UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'maintenance']));
+            $this->redirect(UrlHelper::createUrl(['/consultation/index']));
             return true;
         }
         return false;
@@ -376,7 +374,9 @@ class Base extends Controller
             return true;
         }
         if ($this->consultation->getSettings()->managedUserAccounts) {
-            if (count(User::getCurrentUser()->getUserGroupsForConsultation($this->consultation)) === 0) {
+            $user = User::getCurrentUser();
+            if (count($user->getUserGroupsForConsultation($this->consultation)) === 0 &&
+                !User::havePrivilege($this->consultation, Privileges::PRIVILEGE_SITE_ADMIN, null)) {
                 $this->redirect(UrlHelper::createUrl('/user/consultationaccesserror', $this->consultation));
                 return true;
             }
@@ -490,11 +490,10 @@ class Base extends Controller
         $this->showErrorpage(404, $message);
     }
 
-    protected function consultationError(): void
-    {
-        $this->showErrorpage(500, Yii::t('base', 'err_site_404'));
-    }
-
+    /**
+     * @throws ResponseException
+     * @throws Internal
+     */
     protected function checkConsistency(?Motion $checkMotion = null, ?Amendment $checkAmendment = null, bool $throwExceptions = false): void
     {
         $consultationPath = strtolower($this->consultation->urlPath);
@@ -505,7 +504,7 @@ class Base extends Controller
                 throw new Internal(Yii::t('base', 'err_cons_not_site'), 400);
             }
             $this->getHttpSession()->setFlash("error", Yii::t('base', 'err_cons_not_site'));
-            $this->redirect(UrlHelper::createUrl('/consultation/index'));
+            throw new ResponseException(new RedirectResponse(UrlHelper::homeUrl()));
         }
 
         if (is_object($checkMotion) && strtolower($checkMotion->getMyConsultation()->urlPath) !== $consultationPath) {
@@ -513,7 +512,7 @@ class Base extends Controller
                 throw new Internal(Yii::t('motion', 'err_not_found'), 404);
             }
             $this->getHttpSession()->setFlash('error', Yii::t('motion', 'err_not_found'));
-            $this->redirect(UrlHelper::createUrl('/consultation/index'));
+            throw new ResponseException(new RedirectResponse(UrlHelper::homeUrl()));
         }
 
         if ($checkAmendment !== null && ($checkMotion === null || $checkAmendment->motionId !== $checkMotion->id)) {
@@ -521,7 +520,26 @@ class Base extends Controller
                 throw new Internal(Yii::t('base', 'err_amend_not_consult'), 400);
             }
             $this->getHttpSession()->setFlash('error', Yii::t('base', 'err_amend_not_consult'));
-            $this->redirect(UrlHelper::createUrl('/consultation/index'));
+            throw new ResponseException(new RedirectResponse(UrlHelper::homeUrl()));
+        }
+
+        if ($checkAmendment !== null && ($checkAmendment->amendingAmendmentId && !$checkAmendment->amendedAmendment)) {
+            $this->getHttpSession()->setFlash('error', Yii::t('base', 'err_amend_no_parent'));
+            throw new ResponseException(new RedirectResponse(UrlHelper::homeUrl()));
+        }
+    }
+
+    private function getConsultationUrlFromBackLink(string $backLink): string
+    {
+        preg_match('/\/(?<con>[\w_-]+)(\/.*)?$/siu', $this->getRequestValue('backUrl'), $matches);
+        if (!isset($matches['con']) || $matches['con'] === '') {
+            return '';
+        }
+        $consultation = Consultation::findOne(['urlPath' => $matches['con'], 'siteId' => $this->site->id]);
+        if ($consultation) {
+            return $consultation->urlPath;
+        } else {
+            return '';
         }
     }
 
@@ -534,11 +552,23 @@ class Base extends Controller
         if (is_null($this->site)) {
             $this->site = Site::findOne(['subdomain' => $subdomain]);
         }
-        if (is_null($this->site) || $this->site->status == Site::STATUS_DELETED || $this->site->dateDeletion !== null) {
+
+        if ($this instanceof ConsultationController && $this->action->id === 'home') {
+            foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
+                if ($plugin::hasSiteHomePage()) {
+                    return null;
+                }
+            }
+        }
+
+        if (is_null($this->site) || $this->site->status === Site::STATUS_DELETED || $this->site->dateDeletion !== null) {
             $this->consultationNotFound();
         }
 
-        if ($consultationId == '') {
+        if ($consultationId === '' && $this instanceof UserController && $this->action->id === 'login' && $this->getRequestValue('backUrl')) {
+            $consultationId = $this->getConsultationUrlFromBackLink($this->getRequestValue('backUrl'));
+        }
+        if ($consultationId === '') {
             $consultationId = $this->site->currentConsultation->urlPath;
         }
 
@@ -589,13 +619,7 @@ class Base extends Controller
         return null;
     }
 
-    /**
-     * @param string $motionSlug
-     * @param bool $throwExceptions
-     *
-     * @return Motion|null
-     */
-    protected function getMotionWithCheck($motionSlug, bool $throwExceptions = false)
+    protected function getMotionWithCheck(string $motionSlug, bool $throwExceptions = false): ?Motion
     {
         if (is_numeric($motionSlug) && $motionSlug > 0) {
             $motion = Motion::findOne([

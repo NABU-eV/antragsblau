@@ -26,8 +26,8 @@ use yii\db\ActiveQuery;
  * @property string $dateCreation
  * @property string $extraData
  *
- * @property User $user
- * @property Motion $motion
+ * @property User|null $user
+ * @property Motion|null $motion
  */
 class MotionSupporter extends ISupporter
 {
@@ -64,10 +64,7 @@ class MotionSupporter extends ISupporter
      */
     public static function getMyLoginlessSupportIds(): array
     {
-        return array_merge(
-            RequestContext::getSession()->get('loginless_motion_supports', []),
-            RequestContext::getSession()->get('anonymous_motion_supports', []) // @TODO After v4.8
-        );
+        return RequestContext::getSession()->get('loginless_motion_supports', []);
     }
 
     public static function addLoginlessSupportedMotion(MotionSupporter $support): void
@@ -75,6 +72,25 @@ class MotionSupporter extends ISupporter
         $pre   = static::getMyLoginlessSupportIds();
         $pre[] = intval($support->id);
         RequestContext::getSession()->set('loginless_motion_supports', $pre);
+    }
+
+    public static function getCurrUserSupportStatus(Motion $motion): string
+    {
+        if (User::getCurrentUser()) {
+            foreach ($motion->motionSupporters as $supp) {
+                if ($supp->userId === User::getCurrentUser()->id) {
+                    return $supp->role;
+                }
+            }
+        } else {
+            $supportedIds = self::getMyLoginlessSupportIds();
+            foreach ($motion->motionSupporters as $supp) {
+                if (in_array($supp->id, $supportedIds)) {
+                    return $supp->role;
+                }
+            }
+        }
+        return '';
     }
 
     public static function createSupport(Motion $motion, ?User $user, string $name, string $orga, string $role, string $gender = '', bool $nonPublic = false): void

@@ -2,8 +2,7 @@
 
 namespace app\models\mergeAmendments;
 
-use app\components\MotionNumbering;
-use app\components\Tools;
+use app\components\{MotionNumbering, RequestContext, Tools};
 use app\models\sectionTypes\TextSimple;
 use app\models\db\{IMotion, Motion, MotionSection, MotionSupporter};
 use app\models\events\MotionEvent;
@@ -13,14 +12,12 @@ use app\models\settings\VotingData;
 
 class Merge
 {
-    public Motion $origMotion;
-
     /** @var MotionSection[] */
     public array $motionSections = [];
 
-    public function __construct(Motion $origMotion)
-    {
-        $this->origMotion = $origMotion;
+    public function __construct(
+        public Motion $origMotion
+    ) {
     }
 
     public function getMergedMotionDraft(): ?Motion
@@ -122,7 +119,7 @@ class Merge
     /**
      * @param int[] $amendmentStatuses
      */
-    public function confirm(Motion $newMotion, array $amendmentStatuses, ?string $resolutionMode, string $resolutionBody, array $votes, ?array $amendmentVotes): Motion
+    public function confirm(Motion $newMotion, array $amendmentStatuses, ?string $resolutionMode, ?string $resolutionSubstatus, string $resolutionBody, array $votes, ?array $amendmentVotes): Motion
     {
         $oldMotion    = $this->origMotion;
         $consultation = $oldMotion->getMyConsultation();
@@ -166,6 +163,10 @@ class Merge
             } elseif ($resolutionMode === 'resolution_preliminary') {
                 $newMotion->status = IMotion::STATUS_RESOLUTION_PRELIMINARY;
                 $isResolution      = true;
+            } elseif (intval($resolutionSubstatus) === IMotion::STATUS_ACCEPTED) {
+                $newMotion->status = IMotion::STATUS_ACCEPTED;
+            } elseif (intval($resolutionSubstatus) === IMotion::STATUS_MODIFIED_ACCEPTED) {
+                $newMotion->status = IMotion::STATUS_MODIFIED_ACCEPTED;
             } else {
                 $newMotion->status = $oldMotion->status;
             }
@@ -173,7 +174,7 @@ class Merge
             $newMotion->status = $oldMotion->status;
         }
         if ($isResolution) {
-            $resolutionDate            = \Yii::$app->request->post('dateResolution', '');
+            $resolutionDate            = RequestContext::getWebRequest()->post('dateResolution', '');
             $resolutionDate            = Tools::dateBootstrapdate2sql($resolutionDate);
             $newMotion->dateResolution = ($resolutionDate ? $resolutionDate : null);
         } else {
@@ -196,9 +197,9 @@ class Merge
                 $body->personType     = MotionSupporter::PERSON_ORGANIZATION;
                 $body->role           = MotionSupporter::ROLE_INITIATOR;
                 $body->organization   = $resolutionBody;
-                $resolutionDate       = \Yii::$app->request->post('dateResolution', '');
+                $resolutionDate       = RequestContext::getWebRequest()->post('dateResolution', '');
                 $resolutionDate       = Tools::dateBootstrapdate2sql($resolutionDate);
-                $body->resolutionDate = ($resolutionDate ? $resolutionDate : null);
+                $body->resolutionDate = ($resolutionDate ?: null);
                 if (!$body->save()) {
                     var_dump($body->getErrors());
                     die();

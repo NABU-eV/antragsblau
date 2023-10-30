@@ -1,23 +1,19 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\models\layoutHooks;
 
-use app\models\db\{Amendment,
-    Consultation,
-    ConsultationMotionType,
-    ConsultationText,
-    ISupporter,
-    IVotingItem,
-    Motion,
-    MotionSection,
-    Site,
-    User};
+use app\models\db\{Amendment, Consultation, ConsultationMotionType, ConsultationText, IMotion, ISupporter, IVotingItem, Motion, MotionSection, Site, User};
 use app\models\proposedProcedure\AgendaVoting;
 use app\models\settings\{VotingData, Layout as LayoutSettings};
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class Layout
 {
+    public const CONTEXT_MOTION_LIST = 1;
+    public const CONTEXT_MOTION = 2;
+
     /** @var Hooks[] */
     private static array $hooks = [];
 
@@ -28,16 +24,13 @@ class Layout
         }
     }
 
-    /**
-     * @param mixed $initValue
-     * @return mixed
-     */
-    private static function callHook(string $name, array $args = [], $initValue = '')
+    private static function callHook(string $name, array $args = [], mixed $initValue = ''): mixed
     {
         $out = $initValue;
         foreach (self::$hooks as $hook) {
             $callArgs = array_merge([$out], $args);
-            $out      = call_user_func_array([$hook, $name], $callArgs);
+            /** @phpstan-ignore-next-line - this is actually correct */
+            $out = call_user_func_array([$hook, $name], $callArgs);
         }
         return $out;
     }
@@ -179,6 +172,11 @@ class Layout
     public static function getFormattedAmendmentStatus(string $origStatus, Amendment $amendment): string
     {
         return self::callHook('getFormattedAmendmentStatus', [$amendment], $origStatus);
+    }
+
+    public static function getFormattedTitlePrefix(?string $origVersion, IMotion $imotion, ?int $context): ?string
+    {
+        return self::callHook('getFormattedTitlePrefix', [$imotion, $context], $origVersion);
     }
 
     public static function getFormattedMotionVersion(string $origVersion, Motion $motion): string

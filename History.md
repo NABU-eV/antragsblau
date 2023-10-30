@@ -1,6 +1,37 @@
 # Version history
 
-### Version 4.12.0 (2023-05-29)
+### Version 4.13.0 (2023-10-29)
+
+- WARNING: if you are using a PHP 7.4 or older, then update to PHP 8.0 or newer first before installing this update!
+- For larger consultations using the Speaking Lists, there is now a separate live server component, allowing real-time updates of the speaking lists at reduced load on the server. As it runs on Java, it is not compatible with "traditional" webhosting. Sites running on antragsgruen.de / discuss.green are getting the real-time update feature automatically.
+- It is now possible to copy/duplicate a motion within a consultation.
+- When editing a motion or amendment as admin, it is possible to set the status to "Obsoleted by another amendment" or "Obsoleted by another motion" and specify which one it is in a dropdown.
+- When creating a new consultation based on an existing one, it is now possible to choose if motion types, tags and/or user permissions are to be copied from the existing consultation or not.
+- When a list of organisations is specified in the consultation settings, this list is shown as a drop-down when creating / inviting new users.
+- The list of resolutions made during a consultation, which is by default listed above the motion list on the home page, can now be put onto a separate page - or replace the motion list, moving the motion list to a separate page.
+- The list of tags / topics can now be re-ordered and existing tags can be renamed.
+- When choosing "Tags / categories" as home page layout, then the consolidated category-list at the top can now be deactivated.
+- It can now be set up so that the modified version proposed as part of a proposed procedure is shown inline as part of the motion.
+- Besides of exporting all motions as a ZIP-file containing single ODT files, a single ODT file containing all motion texts can now be exported.
+- When a new version of a motion is created during merging amendments (in contrast to a resolution being created), the status of the new motion version can be explicitly specified.
+- The ODT export now also supports numbered lists.
+- The motion list can now be filtered for To Do items (that is, motions/amendments that need to be screened) and also shows the To Do action for items on that list as part of the Status.
+- The motion list now persists its filter and sort settings for each user session, until changed or reset.
+- If an amendment is set to show the full text by default, this now also affects the PDF export.
+- Merging a single amendment into a motion now also handles amendments only changing the title of the motion.
+- The maintenance mode page is now specific to a consultation; that is, delegates bookmarking a link to a consultation that is still in maintenance mode can open that bookmark later and get to theat very consultation, not the generic home page.
+- On single-site instances, user registration can be disabled altogether by setting the allowRegistration key in config.json to false.
+- Bugfix: If a draft of a revised motion (by merging amendments) existed and the motion list was opened, the original motion was not shown anymore by default.
+- Bugfix: Some edge cases around uploaded logos breaking the PDF export or not being shown on the page were resolved.
+- Bugfix: Super-admins could lock themselves out of protected consultations.
+- Bugfix: Putting a active speaker back into the speaking waiting list did not work - the speaker vanished from the list completely.
+- Bugfix: Closing the full screen mode of a speaking list was leading to an error page.
+- Bugfix: If not-logged-in users are allowed to support motions/amendments, they showed up as empty bullet points in the supporter list. Now they have to enter their name.
+- Bugfix: The delete button in the admin motion list was shown even if no delete permissions were granted and it was therefore non-functional.
+- Bugfix: If a motion collecting supporters was edited by an admin, then no publication mail was sent later when it was actually published.
+- Bugfix: The login screen shows the correct consultation in the breadcrumb links.
+
+## Version 4.12.0 (2023-05-29)
 
 - User groups are now more powerful administrational tools:
   - User groups can now receive admin rights for specific administrational tasks.

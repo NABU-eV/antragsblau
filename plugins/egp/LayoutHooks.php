@@ -163,6 +163,24 @@ class LayoutHooks extends Hooks
             }
         }
 
+        if ($consultation && $consultation->getSettings()->documentPage) {
+            $adminUrl = UrlHelper::createUrl(['/pages/documents']);
+            $adminTitle = \Yii::t('base', 'menu_documents');
+            $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'documentsLink', 'aria-label' => $adminTitle]) . '</li>';
+        }
+
+        if ($consultation && $consultation->getSettings()->hasSpeechLists && $consultation->getSettings()->speechPage) {
+            $adminUrl = UrlHelper::createUrl(['/consultation/speech']);
+            $adminTitle = \Yii::t('base', 'menu_speech_list');
+            $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'speechLink', 'aria-label' => $adminTitle]) . '</li>';
+        }
+
+        if ($consultation && $consultation->getSettings()->votingPage) {
+            $adminUrl = UrlHelper::createUrl(['/consultation/votings']);
+            $adminTitle = \Yii::t('base', 'menu_votings');
+            $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'votingsLink', 'aria-label' => $adminTitle]) . '</li>';
+        }
+
         if (!User::getCurrentUser()) {
             if (get_class($controller) === UserController::class) {
                 $backUrl = UrlHelper::createUrl('/consultation/index');
@@ -190,10 +208,10 @@ class LayoutHooks extends Hooks
             $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'motionListLink', 'aria-label' => $adminTitle]) . '</li>';
         }
         if ($privilegeScreening) {
-            $todo = AdminTodoItem::getConsultationTodos($controller->consultation);
-            if (count($todo) > 0) {
-                $adminUrl   = UrlHelper::createUrl('/admin/index/todo');
-                $adminTitle = \Yii::t('base', 'menu_todo') . ' (' . count($todo) . ')';
+            $todo = AdminTodoItem::getConsultationTodoCount($controller->consultation);
+            if ($todo > 0) {
+                $adminUrl   = UrlHelper::createUrl('/consultation/todo');
+                $adminTitle = \Yii::t('base', 'menu_todo') . ' (' . $todo . ')';
                 $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'adminTodo', 'aria-label' => $adminTitle]) . '</li>';
             }
         }
@@ -210,7 +228,7 @@ class LayoutHooks extends Hooks
     public function getMotionViewData(array $motionData, Motion $motion): array
     {
         foreach ($motionData as $i => $data) {
-            if ($motionData[$i]['title'] === \Yii::t('motion', 'initiators_1') || $motionData[$i]['title'] === \Yii::t('motion', 'initiators_x')) {
+            if ($data['title'] === \Yii::t('motion', 'initiators_1') || $data['title'] === \Yii::t('motion', 'initiators_x')) {
                 $motionData[$i]['title']   = 'Party';
                 $initiators                = $motion->getInitiators();
                 $motionData[$i]['content'] = '';
@@ -226,7 +244,7 @@ class LayoutHooks extends Hooks
     public function getAmendmentViewData(array $amendmentData, Amendment $amendment): array
     {
         foreach ($amendmentData as $i => $data) {
-            if ($amendmentData[$i]['title'] === \Yii::t('motion', 'initiators_1') || $amendmentData[$i]['title'] === \Yii::t('motion', 'initiators_x')) {
+            if ($data['title'] === \Yii::t('motion', 'initiators_1') || $data['title'] === \Yii::t('motion', 'initiators_x')) {
                 $amendmentData[$i]['title']   = 'Party';
                 $initiators                = $amendment->getInitiators();
                 $amendmentData[$i]['content'] = '';
@@ -262,7 +280,7 @@ class LayoutHooks extends Hooks
                 if ($amend->globalAlternative) {
                     $before .= '<strong>' . \Yii::t('amend', 'global_alternative') . ':</strong> ';
                 }
-                $aename = $amend->titlePrefix;
+                $aename = $amend->getFormattedTitlePrefix(Layout::CONTEXT_MOTION_LIST);
                 if ($aename === '') {
                     $aename = (string)$amend->id;
                 }

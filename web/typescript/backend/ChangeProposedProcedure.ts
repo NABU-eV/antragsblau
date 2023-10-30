@@ -1,6 +1,6 @@
 const STATUS_REFERRED = 10;
 const STATUS_VOTE = 11;
-const STATUS_OBSOLETED_BY = 22;
+const STATUS_OBSOLETED_BY_AMEND = 22;
 const STATUS_CUSTOM_STRING = 23;
 const STATUS_PROPOSED_MOVE_TO_OTHER_MOTION = 28;
 
@@ -66,6 +66,11 @@ export class ChangeProposedProcedure {
         $tagsSelect.selectize({
             create: true,
             plugins: ["remove_button"],
+            render: {
+                option_create: (data, escape) => {
+                    return '<div class="create">' + __t('std', 'add_tag') + ': <strong>' + escape(data.input) + '</strong></div>';
+                }
+            }
         });
 
         $tagsSelect.on("change", () => {
@@ -93,7 +98,6 @@ export class ChangeProposedProcedure {
         data['context'] = this.context;
 
         $.post(this.saveUrl, data, (ret) => {
-            console.log(ret);
             if (ret['redirectToUrl']) {
                 window.location.href = ret['redirectToUrl'];
             } else if (ret['success']) {
@@ -164,7 +168,7 @@ export class ChangeProposedProcedure {
         if (newVal == STATUS_REFERRED) {
             data['proposalComment'] = this.$widget.find('input[name=referredTo]').val();
         }
-        if (newVal == STATUS_OBSOLETED_BY) {
+        if (newVal == STATUS_OBSOLETED_BY_AMEND) {
             if (this.$widget.find('select[name=obsoletedByAmendment]').length > 0) {
                 data['proposalComment'] = this.$widget.find('select[name=obsoletedByAmendment]').val();
             } else {

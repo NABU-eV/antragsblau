@@ -3,6 +3,7 @@
 namespace app\models\db;
 
 use app\models\policies\Nobody;
+use CatoTH\HTML2OpenDocument\Text;
 use app\components\{DateTools, Tools, UrlHelper};
 use app\models\settings\{AntragsgruenApp, InitiatorForm, Layout, MotionType};
 use app\models\policies\IPolicy;
@@ -72,20 +73,20 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
         return AntragsgruenApp::getInstance()->tablePrefix . 'consultationMotionType';
     }
 
-    public function setAttributes($values, $safeOnly = true)
+    public function setAttributes($values, $safeOnly = true): void
     {
         parent::setAttributes($values, $safeOnly);
-        if (grapheme_strlen($this->motionPrefix) > 0) {
-            $this->motionPrefix = (string)grapheme_substr($this->motionPrefix, 0, 10);
+        if (mb_strlen($this->motionPrefix) > 0) {
+            $this->motionPrefix = mb_substr($this->motionPrefix, 0, 10);
         }
-        if (grapheme_strlen($this->titleSingular) > 100) {
-            $this->titleSingular = (string)grapheme_substr($this->titleSingular, 0, 100);
+        if (mb_strlen($this->titleSingular) > 100) {
+            $this->titleSingular = mb_substr($this->titleSingular, 0, 100);
         }
-        if (grapheme_strlen($this->titlePlural) > 100) {
-            $this->titlePlural = (string)grapheme_substr($this->titlePlural, 0, 100);
+        if (mb_strlen($this->titlePlural) > 100) {
+            $this->titlePlural = mb_substr($this->titlePlural, 0, 100);
         }
-        if (grapheme_strlen($this->createTitle) > 200) {
-            $this->createTitle = (string)grapheme_substr($this->createTitle, 0, 200);
+        if (mb_strlen($this->createTitle) > 200) {
+            $this->createTitle = mb_substr($this->createTitle, 0, 200);
         }
     }
 
@@ -225,6 +226,16 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
         }
     }
 
+    public function createOdtTextHandler(): Text
+    {
+        /** @noinspection PhpUnhandledExceptionInspection */
+        return new Text([
+            'templateFile' => $this->getOdtTemplateFile(),
+            'tmpPath'      => AntragsgruenApp::getInstance()->getTmpDir(),
+            'trustHtml'    => true,
+        ]);
+    }
+
     public function getDeadlinesByType(string $type): array
     {
         if ($this->deadlinesObject === null) {
@@ -235,7 +246,7 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
 
     public function setAllDeadlines(array $deadlines): void
     {
-        $this->deadlines       = json_encode($deadlines);
+        $this->deadlines = json_encode($deadlines, JSON_THROW_ON_ERROR);
         $this->deadlinesObject = null;
     }
 
@@ -352,7 +363,7 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
         return $this->settingsObject;
     }
 
-    public function setSettingsObj(MotionType $settings)
+    public function setSettingsObj(MotionType $settings): void
     {
         $this->settingsObject = $settings;
         $this->settings = json_encode($settings, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);

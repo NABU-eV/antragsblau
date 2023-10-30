@@ -63,8 +63,11 @@ ob_start();
                     <div class="rightColumn" v-if="!permissionGlobalEdit">
                         {{ organization }}
                     </div>
-                    <div class="rightColumn" v-if="permissionGlobalEdit">
+                    <div class="rightColumn" v-if="permissionGlobalEdit && organisations.length === 0">
                         <input type="text" class="form-control inputOrganization" v-model="organization">
+                    </div>
+                    <div class="rightColumn" v-if="permissionGlobalEdit && organisations.length > 0">
+                        <v-selectize @change="setOrganisation($event)" :options="organisationSelect" :values="[organization]" create="true"></v-selectize>
                     </div>
                 </div>
                 <div class="stdTwoCols">
@@ -83,8 +86,8 @@ ob_start();
                         <?= Yii::t('admin', 'siteacc_new_groups') ?>
                     </div>
                     <div class="rightColumn">
-                        <label v-for="group in groups" :class="'userGroup' + group.id">
-                            <input type="checkbox" :checked="isInGroup(group)" @click="toggleGroup(group)">
+                        <label v-for="group in groups" :class="['userGroup' + group.id, isGroupSelectable(group) ? '' : 'disabled']">
+                            <input type="checkbox" :checked="isInGroup(group)" @click="toggleGroup(group)" :disabled="!isGroupSelectable(group)">
                             {{ group.title }}
                         </label>
                     </div>
@@ -120,7 +123,7 @@ $html = ob_get_clean();
 
     __setVueComponent('users', 'component', 'user-edit-widget', {
         template: <?= json_encode($html) ?>,
-        props: ['groups', 'urlUserLog', 'permissionGlobalEdit'],
+        props: ['groups', 'organisations', 'urlUserLog', 'permissionGlobalEdit'],
         data() {
             return {
                 user: null,
@@ -139,6 +142,23 @@ $html = ob_get_clean();
             },
             userLogUrl: function () {
                 return this.urlUserLog.replace(/%23/g, "#").replace(/###USER###/, this.user.id);
+            },
+            organisationSelect: function () {
+                return [
+                    {
+                        'id': '',
+                        'label': ' ',
+                    }, {
+                        'id': this.organization,
+                        'label': this.organization,
+                    },
+                    ...this.organisations.map(orgaData => {
+                        return {
+                            'id': orgaData['name'],
+                            'label': orgaData['name'],
+                        };
+                    })
+                ];
             }
         },
         methods: {
@@ -164,6 +184,12 @@ $html = ob_get_clean();
                     $event.stopPropagation();
                 }
             },
+            isGroupSelectable: function (group) {
+                if (!this.user.selectable_groups) {
+                    return true;
+                }
+                return this.user.selectable_groups.indexOf(group.id) !== -1;
+            },
             isInGroup: function (group) {
                 return this.userGroups.indexOf(group.id) !== -1;
             },
@@ -179,6 +205,9 @@ $html = ob_get_clean();
                 this.$nextTick(function () {
                     this.$refs['password-setter'].focus();
                 });
+            },
+            setOrganisation: function ($event) {
+                this.organization = $event[0];
             }
         }
 

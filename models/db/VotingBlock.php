@@ -268,6 +268,9 @@ class VotingBlock extends ActiveRecord implements IHasPolicies
         return $votes;
     }
 
+    /**
+     * @return Vote[]
+     */
     public function getVotesForVotingItem(IVotingItem $votingItem): array
     {
         if (is_a($votingItem, Amendment::class)) {
@@ -515,7 +518,7 @@ class VotingBlock extends ActiveRecord implements IHasPolicies
             'type' => $type,
             'date' => date('c'),
         ];
-        $this->activityLog = json_encode($activityLog);
+        $this->activityLog = (string)json_encode($activityLog);
     }
 
     public function getActivityLogForApi(): array

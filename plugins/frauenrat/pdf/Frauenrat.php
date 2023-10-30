@@ -129,7 +129,7 @@ class Frauenrat extends IPDFLayout
         $left           = 23.5;
 
         $title1 = $amendment->getMyMotion()->getTitleWithPrefix();
-        $title2 = \Yii::t('amend', 'amendment') . ' ' . $amendment->titlePrefix;
+        $title2 = \Yii::t('amend', 'amendment') . ' ' . $amendment->getFormattedTitlePrefix();
         $this->printHeader($pdf, $amendment->getMyConsultation(), $amendment->getMyMotionType(), $title1, $title2);
 
         $initiatorName = null;
@@ -204,7 +204,7 @@ class Frauenrat extends IPDFLayout
         $pdf->SetFont($pdf->calibriBold, 'b', 12);
         $pdf->SetTextColor(46, 116, 181);
         $pdf->ln(4);
-        $pdf->MultiCell(0, 0, '<h4>' . $text . '</h4>', 0, 'L', false, 1, 22, '', true, 0, true);
+        $pdf->MultiCell(0, 0, '<h4>' . $text . '</h4>', 0, 'L', false, 1, 22, null, true, 0, true);
         $pdf->SetFont($pdf->calibri, '', 12);
         $pdf->SetTextColor(0, 0, 0);
     }

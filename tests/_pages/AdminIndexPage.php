@@ -1,20 +1,21 @@
 <?php
 
-namespace app\tests\_pages;
+namespace Tests\_pages;
 
-use Helper\BasePage;
+use Tests\Support\Helper\BasePage;
 
 /**
- * @property \AcceptanceTester|\FunctionalTester $actor
+ * @property \Tests\Support\AcceptanceTester $actor
  */
 class AdminIndexPage extends BasePage
 {
-    public $route = 'admin/index';
+    public string|array $route = 'admin/index';
 
     /**
      * @param int $motionTypeId
+     * @return \Tests\_pages\AdminMotionTypePage
      */
-    public function gotoMotionTypes($motionTypeId): AdminMotionTypePage
+    public function gotoMotionTypes(int $motionTypeId): AdminMotionTypePage
     {
         $this->actor->click('.motionType' . $motionTypeId);
         $this->actor->see(mb_strtoupper('Antragstyp bearbeiten'), 'h1');
@@ -33,7 +34,7 @@ class AdminIndexPage extends BasePage
         return new AdminAppearancePage($this->actor);
     }
 
-    public function gotoUserAdministration()
+    public function gotoUserAdministration(): void
     {
         $this->actor->click('.siteUsers');
         $this->actor->wait(1);

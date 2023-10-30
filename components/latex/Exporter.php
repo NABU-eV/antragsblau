@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\components\latex;
 
 use app\components\{HashedStaticCache, HTMLTools};
@@ -9,13 +11,17 @@ use app\models\settings\AntragsgruenApp;
 
 class Exporter
 {
-    private Layout $layout;
-    private AntragsgruenApp $app;
+    private const SUPPORTED_IMAGE_FORMATS = [
+        'image/png',
+        'image/jpg',
+        'image/jpeg',
+        'image/gif',
+    ];
 
-    public function __construct(Layout $layout, AntragsgruenApp $app)
-    {
-        $this->layout = $layout;
-        $this->app    = $app;
+    public function __construct(
+        private Layout $layout,
+        private AntragsgruenApp $app,
+    ) {
     }
 
     public static function encodePlainString(string $str, bool $textLineBreaks = true): string
@@ -447,11 +453,11 @@ class Exporter
             $replaces['%APP_TOP_LABEL%'] = '';
             $replaces['%APP_TOP%']       = '';
         }
-        if ($content->logoData) {
-            $fileExt                           = Image::getFileExtensionFromMimeType($content->logoData[0]);
-            $filenameBase                      = uniqid('motion-pdf-image') . '.' . $fileExt;
-            $tmpPath                           = AntragsgruenApp::getInstance()->getTmpDir() . $filenameBase;
-            $replaces['%LOGO%']                = '\includegraphics[width=4.9cm]{' . $tmpPath . '}';
+        if ($content->logoData && in_array($content->logoData[0], self::SUPPORTED_IMAGE_FORMATS)) {
+            $fileExt = Image::getFileExtensionFromMimeType($content->logoData[0]);
+            $filenameBase = uniqid('motion-pdf-image') . '.' . $fileExt;
+            $tmpPath = AntragsgruenApp::getInstance()->getTmpDir() . $filenameBase;
+            $replaces['%LOGO%'] = '\includegraphics[width=4.9cm]{' . $tmpPath . '}';
             $content->imageData[$filenameBase] = $content->logoData[1];
         } else {
             $replaces['%LOGO%'] = '';
@@ -551,7 +557,7 @@ class Exporter
         foreach ($pdfHashes as $file => $hash) {
             $cacheDepend = str_replace($file, $hash, $cacheDepend);
         }
-        $cached = HashedStaticCache::getCache('latexCreatePDF', $cacheDepend);
+        $cached = HashedStaticCache::getCache('latexCreatePDF', [$cacheDepend]);
 
         if (YII_ENV_DEV && isset($_REQUEST['latex_src'])) {
             Header('Content-Type: text/plain');
@@ -577,7 +583,7 @@ class Exporter
         if (!file_exists($filenameBase . '.pdf')) {
             throw new Internal('An error occurred while creating the PDF: ' . $cmd);
         }
-        $pdf = file_get_contents($filenameBase . '.pdf');
+        $pdf = (string)file_get_contents($filenameBase . '.pdf');
 
         unlink($filenameBase . '.aux');
         unlink($filenameBase . '.log');
@@ -592,7 +598,7 @@ class Exporter
             unlink($file);
         }
 
-        HashedStaticCache::setCache('latexCreatePDF', $cacheDepend, $pdf);
+        HashedStaticCache::setCache('latexCreatePDF', [$cacheDepend], $pdf);
 
         return $pdf;
     }

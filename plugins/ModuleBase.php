@@ -116,6 +116,11 @@ class ModuleBase extends Module
         return null;
     }
 
+    public static function canSeeContactDetails(IMotion $imotion, ?User $user): ?bool
+    {
+        return null;
+    }
+
     /**
      * @return AdminTodoItem[]|null
      */
@@ -145,8 +150,7 @@ class ModuleBase extends Module
     }
 
     /**
-     * @phpstan-ignore-next-line
-     * @return string|\app\models\settings\Consultation|null
+     * @return class-string<\app\models\settings\Consultation>|null
      */
     public static function getConsultationSettingsClass(Consultation $consultation): ?string
     {
@@ -158,6 +162,16 @@ class ModuleBase extends Module
         return '';
     }
 
+    public static function createDefaultUserGroups(Consultation $consultation): void
+    {
+    }
+
+    /** @return null|int[] */
+    public static function getSelectableGroupsForUser(Consultation $consultation, User $user): ?array
+    {
+        return null;
+    }
+
     /**
      * @phpstan-ignore-next-line
      * @return string|\app\models\settings\Site|null
@@ -167,6 +181,9 @@ class ModuleBase extends Module
         return null;
     }
 
+    /**
+     * @return array<string, array{title: string, preview: string|null, bundle: class-string, hooks?: class-string<Hooks>, odtTemplate?: string}>
+     */
     public static function getProvidedLayouts(?View $view = null): array
     {
         return [];
@@ -200,11 +217,6 @@ class ModuleBase extends Module
         return [];
     }
 
-    public static function getCustomSiteCreateView(): ?string
-    {
-        return null;
-    }
-
     public static function getCustomEmailTemplate(): ?string
     {
         return null;
@@ -231,7 +243,7 @@ class ModuleBase extends Module
     }
 
     /**
-     * @return IMajorityType[]
+     * @return array<class-string<IMajorityType>>
      */
     public static function getAdditionalMajorityTypes(): array
     {
@@ -247,7 +259,7 @@ class ModuleBase extends Module
     }
 
     /**
-     * @return string|VotingData
+     * @return class-string<VotingData>|null
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
     public static function getVotingDataClass(Consultation $consultation): ?string

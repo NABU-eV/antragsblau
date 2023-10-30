@@ -136,11 +136,12 @@ class MotionController extends AdminBase
         $post         = $this->getHttpRequest()->post();
 
         if ($this->isPostSet('screen') && $motion->isInScreeningProcess() && User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, $privCtx)) {
-            if ($consultation->findMotionWithPrefixAndVersion($post['titlePrefix'], $post['version'], $motion)) {
+            $toSetPrefix = (mb_strlen($post['titlePrefix']) > 50 ? mb_substr($post['titlePrefix'], 0, 50) : $post['titlePrefix']);
+            if ($consultation->findMotionWithPrefixAndVersion($toSetPrefix, $post['version'], $motion)) {
                 $this->getHttpSession()->setFlash('error', \Yii::t('admin', 'motion_prefix_collision'));
             } else {
                 $motion->status = Motion::STATUS_SUBMITTED_SCREENED;
-                $motion->titlePrefix = $post['titlePrefix'];
+                $motion->titlePrefix = $toSetPrefix;
                 $motion->version = $post['version'];
                 $motion->save();
                 $motion->trigger(Motion::EVENT_PUBLISHED, new MotionEvent($motion));
@@ -225,12 +226,19 @@ class MotionController extends AdminBase
             }
 
             $motion->title        = $modat['title'];
-            $motion->statusString = mb_substr($modat['statusString'], 0, 55);
             $motion->noteInternal = $modat['noteInternal'];
-            $motion->status       = intval($modat['status']);
             $motion->agendaItemId = (isset($modat['agendaItemId']) ? intval($modat['agendaItemId']) : null);
             $motion->nonAmendable = (isset($modat['nonAmendable']) ? 1 : 0);
             $motion->notCommentable = (isset($modat['notCommentable']) ? 1 : 0);
+
+            $motion->status       = intval($modat['status']);
+            if ($motion->status === Motion::STATUS_OBSOLETED_BY_MOTION) {
+                $motion->statusString = (string)intval($modat['statusStringMotion']);
+            } elseif ($motion->status === Motion::STATUS_OBSOLETED_BY_AMENDMENT) {
+                $motion->statusString = (string)intval($modat['statusStringAmendment']);
+            } else {
+                $motion->statusString = mb_substr($modat['statusString'], 0, 55);
+            }
 
             if (isset($modat['slug']) && preg_match('/^[\w_-]+$/i', $modat['slug'])) {
                 $collision = false;
@@ -276,11 +284,12 @@ class MotionController extends AdminBase
                 $motion->parentMotionId = null;
             }
 
-            if ($consultation->findMotionWithPrefixAndVersion($modat['titlePrefix'], $modat['version'], $motion)) {
+            $toSetPrefix = (mb_strlen($modat['titlePrefix']) > 50 ? mb_substr($modat['titlePrefix'], 0, 50) : $modat['titlePrefix']);
+            if ($consultation->findMotionWithPrefixAndVersion($toSetPrefix, $modat['version'], $motion)) {
                 $this->getHttpSession()->setFlash('error', \Yii::t('admin', 'motion_prefix_collision'));
             } else {
-                $motion->titlePrefix = $modat['titlePrefix'];
-                $motion->version = $modat['version'];
+                $motion->titlePrefix = $toSetPrefix;
+                $motion->version = (mb_strlen($modat['version']) > 50 ? mb_substr($modat['version'], 0, 50) : $modat['version']);
             }
 
             foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
@@ -359,12 +368,18 @@ class MotionController extends AdminBase
             $newConsultation = array_values(array_filter($this->site->consultations, function(Consultation $con) use ($consultationId) {
                 return ($con->id === $consultationId);
             }))[0];
-            $existingMotion = array_filter($newConsultation->motions, function(Motion $cmpMotion) use ($newMotionPrefix, $motion) {
-                return (
-                    mb_strtolower($cmpMotion->titlePrefix) === mb_strtolower($newMotionPrefix) &&
-                    $cmpMotion->id !== $motion->id
-                );
+
+            $existingMotion = array_filter($newConsultation->motions, function(Motion $cmpMotion) use ($newMotionPrefix) {
+                return (mb_strtolower($cmpMotion->titlePrefix) === mb_strtolower($newMotionPrefix));
             });
+
+            // If the motion is copied (not moved) within the same consultation, then the new motion could collide with the old one.
+            // If it's moved, however, we can ignore the old motion.
+            if ($this->getHttpRequest()->get('operation') === 'move') {
+                $existingMotion = array_filter($existingMotion, function(Motion $cmpMotion) use ($motion) {
+                    return $cmpMotion->id !== $motion->id;
+                });
+            }
             $result = (count($existingMotion) === 0);
         }
 

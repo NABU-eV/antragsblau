@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace app\plugins\dbwv;
 
-use app\models\layoutHooks\Layout;
+use app\models\settings\Layout;
 use app\components\{RequestContext, UrlHelper};
 use app\controllers\admin\MotionListController;
 use app\models\layoutHooks\StdHooks;
-use app\models\db\{Consultation, ConsultationUserGroup, Motion, User};
-use app\plugins\dbwv\workflow\{Step1, Step2, Step3, Step4, Step5, Workflow};
+use app\models\db\{Consultation, ConsultationUserGroup, IMotion, Motion, User};
+use app\plugins\dbwv\workflow\{Step1, Step2, Step3, Step4, Step5, Step6, Step7, Workflow};
 use yii\helpers\Html;
 
 class LayoutHooks extends StdHooks
@@ -25,6 +25,9 @@ class LayoutHooks extends StdHooks
 
     protected function getUserBarGroups(User $user): string
     {
+        if ($this->consultation === null) {
+            return '';
+        }
         $groups = array_filter($user->getConsultationUserGroups($this->consultation), function (ConsultationUserGroup $group) {
             return $group->templateId !== ConsultationUserGroup::TEMPLATE_PARTICIPANT;
         });
@@ -40,7 +43,7 @@ class LayoutHooks extends StdHooks
         $out .= '<div class="username"><strong>' . \Yii::t('base', 'menu_logged_in') . ':</strong> ';
         $out .= Html::encode($user->name);
         if ($user->organization) {
-            echo ' (' . Html::encode($user->organization) . ')';
+            $out .= ' (' . Html::encode($user->organization) . ')';
         }
         $out .= '</div>';
 
@@ -55,7 +58,7 @@ class LayoutHooks extends StdHooks
 
     public function getMotionViewData(array $motionData, Motion $motion): array
     {
-        if (!Workflow::canAssignTopicV1($motion)) {
+        if (!Workflow::canAssignTopic($motion)) {
             return $motionData;
         }
 
@@ -93,6 +96,10 @@ class LayoutHooks extends StdHooks
                 return Step4::renderMotionAdministration($motion) . $before;
             case Workflow::STEP_V5:
                 return Step5::renderMotionAdministration($motion) . $before;
+            case Workflow::STEP_V6:
+                return Step6::renderMotionAdministration($motion) . $before;
+            case Workflow::STEP_V7:
+                return Step7::renderMotionAdministration($motion) . $before;
             default:
                 return $before;
         }
@@ -132,5 +139,31 @@ class LayoutHooks extends StdHooks
     {
         $translated = Workflow::getStepName($motion->version);
         return $translated ?? $before;
+    }
+
+    public function getFormattedTitlePrefix(?string $before, IMotion $imotion, ?int $context): ?string
+    {
+        if ($before === null) {
+            return null;
+        }
+
+        // Strip " (...)" at the end of the prefix
+        $prefix = preg_replace('/ \(.*\)$/siu', '', $before);
+
+        if ($context === \app\models\layoutHooks\Layout::CONTEXT_MOTION_LIST) {
+            // Don't show the beginning of the title prefix in the motion list
+            $prefix = preg_replace('/^[ a-z]*\/ */siu', '', $prefix);
+        }
+
+        return $prefix;
+    }
+
+    public function renderSidebar(string $before): string
+    {
+        if ($this->layout->menuSidebarType === Layout::SIDEBAR_TYPE_CONSULTATION && !Module::currentUserCanSeeMotions()) {
+            return '';
+        } else {
+            return parent::renderSidebar($before);
+        }
     }
 }

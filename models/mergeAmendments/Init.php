@@ -163,7 +163,7 @@ class Init
     /**
      * @return int[]
      */
-    public function getAllAmendmentIdsAffectingParagraph(MotionSection $section, $paragraphNo, ?array $onlyAmendments = null): array
+    public function getAllAmendmentIdsAffectingParagraph(MotionSection $section, int $paragraphNo, ?array $onlyAmendments = null): array
     {
         return $section->getAmendmentDiffMerger($onlyAmendments)->getAffectingAmendmentIds($paragraphNo);
     }
@@ -237,7 +237,7 @@ class Init
 
         return [
             'id'            => $amendment->id,
-            'titlePrefix'   => $amendment->titlePrefix,
+            'titlePrefix'   => $amendment->getFormattedTitlePrefix(),
             'bookmarkName'  => \app\models\layoutHooks\Layout::getAmendmentBookmarkName($amendment),
             'url'           => UrlHelper::createAmendmentUrl($amendment),
             'oldStatusId'   => $amendment->status,

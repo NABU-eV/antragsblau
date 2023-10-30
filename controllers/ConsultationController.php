@@ -48,14 +48,7 @@ class ConsultationController extends Base
             }
         }
 
-        $return = parent::beforeAction($action);
-        if (!$this->consultation) {
-            $this->consultationNotFound();
-
-            return false;
-        }
-
-        return $return;
+        return parent::beforeAction($action);
     }
 
     public function actionSearch(): ResponseInterface
@@ -222,7 +215,7 @@ class ConsultationController extends Base
         $con  = $this->consultation;
 
         if ($this->isPostSet('save')) {
-            $newNotis = \Yii::$app->request->post('notifications', []);
+            $newNotis = $this->getPostValue('notifications', []);
             if (isset($newNotis['motion'])) {
                 UserNotification::addNotification($user, $con, UserNotification::NOTIFICATION_NEW_MOTION);
             } else {
@@ -285,8 +278,25 @@ class ConsultationController extends Base
         return $this->actionIndex();
     }
 
+    public function actionMotions(): ResponseInterface
+    {
+        return new HtmlResponse($this->render('motions', []));
+    }
+
+    public function actionResolutions(): ResponseInterface
+    {
+        return new HtmlResponse($this->render('resolutions', []));
+    }
+
     public function actionIndex(): ResponseInterface
     {
+        if (!$this->consultation) {
+            return new HtmlErrorResponse(500, 'The page was not found. This might be due to a misconfiguration of the installation.');
+        }
+        if ($this->consultation->getSettings()->maintenanceMode && !User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CONSULTATION_SETTINGS, null)) {
+            return $this->renderContentPage('maintenance');
+        }
+
         foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
             $pluginHome = $plugin::getConsultationHomePage($this->consultation);
             if ($pluginHome !== null) {
@@ -312,15 +322,12 @@ class ConsultationController extends Base
             $myAmendments = null;
         }
 
-        return new HtmlResponse($this->render(
-            'index',
-            [
-                'consultation' => $this->consultation,
-                'myself'       => $myself,
-                'myMotions'    => $myMotions,
-                'myAmendments' => $myAmendments,
-            ]
-        ));
+        return new HtmlResponse($this->render('index', [
+            'consultation' => $this->consultation,
+            'myself' => $myself,
+            'myMotions' => $myMotions,
+            'myAmendments' => $myAmendments,
+        ]));
     }
 
     public function actionActivitylog(string $page = "0", ?string $showAll = null): ResponseInterface

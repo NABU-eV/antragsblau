@@ -51,7 +51,7 @@ class VotingItemGroup
 
     public function isAdhocGroup(): bool
     {
-        return (strpos($this->groupId, static::ADHOC_PREFIX) === 0);
+        return (str_starts_with($this->groupId, static::ADHOC_PREFIX));
     }
 
     public function isOnlyMyselfGroup(IMotion $item): bool {
@@ -71,20 +71,20 @@ class VotingItemGroup
             if ($excludeFromTitle && is_a($excludeFromTitle, Motion::class) && $motion->id === $excludeFromTitle->id) {
                 continue;
             }
-            $titles[] = $motion->titlePrefix ?: $motion->getTitleWithPrefix();
+            $titles[] = $motion->getFormattedTitlePrefix() ?: $motion->getTitleWithPrefix();
         }
         foreach ($this->amendments as $amendment) {
             if ($excludeFromTitle && is_a($excludeFromTitle, Amendment::class) && $amendment->id === $excludeFromTitle->id) {
                 continue;
             }
-            $titles[] = $amendment->titlePrefix ?: $amendment->getTitleWithPrefix();
+            $titles[] = $amendment->getFormattedTitlePrefix() ?: $amendment->getTitleWithPrefix();
         }
         return implode(', ', $titles);
     }
 
     public static function setVotingItemGroupToAllItems(VotingBlock $votingBlock, IMotion $imotion, string $idToSet, ?string $nameToSet): void
     {
-        if (strpos($idToSet, static::ADHOC_PREFIX) === 0) {
+        if (str_starts_with($idToSet, static::ADHOC_PREFIX)) {
             $otherItem = null;
             if (strpos($idToSet, static::ADHOC_PREFIX_AMENDMENT) !== false) {
                 $groupWithId = intval(explode('-', $idToSet)[2]);

@@ -2,11 +2,12 @@
 
 namespace app\views\amendment;
 
+use app\components\HTMLTools;
 use app\models\sectionTypes\ISectionType;
 use app\views\pdfLayouts\{IPdfWriter, IPDFLayout};
 use app\components\latex\{Content, Exporter, Layout};
 use app\components\Tools;
-use app\models\db\{Amendment, AmendmentSection, TexTemplate};
+use app\models\db\{Amendment, AmendmentSection, ISupporter, Motion, TexTemplate};
 use app\models\LimitedSupporterList;
 use app\models\settings\AntragsgruenApp;
 use yii\helpers\Html;
@@ -38,7 +39,7 @@ class LayoutHelper
             if ($referenceAmendment->id === $amendment->id) {
                 $prefix = \Yii::t('amend', 'pprocedure_title_own');
             } else {
-                $prefix = \Yii::t('amend', 'pprocedure_title_other') . ' ' . $referenceAmendment->titlePrefix;
+                $prefix = \Yii::t('amend', 'pprocedure_title_other') . ' ' . $referenceAmendment->getFormattedTitlePrefix();
             }
             if (!$amendment->isProposalPublic()) {
                 $prefix = '[ADMIN] ' . $prefix;
@@ -62,13 +63,13 @@ class LayoutHelper
         $content->title      = $amendment->getMyMotion()->getTitleWithIntro();
         $content->lineLength = $amendment->getMyConsultation()->getSettings()->lineLength;
         $content->logoData   = $amendment->getMyConsultation()->getPdfLogoData();
-        if (!$amendment->getMyConsultation()->getSettings()->hideTitlePrefix && $amendment->titlePrefix !== '') {
-            $content->titlePrefix = $amendment->titlePrefix;
+        if (!$amendment->getMyConsultation()->getSettings()->hideTitlePrefix && $amendment->getFormattedTitlePrefix() !== '') {
+            $content->titlePrefix = $amendment->getFormattedTitlePrefix();
         }
-        $content->titleLong       = $amendment->titlePrefix . ' - ';
+        $content->titleLong       = $amendment->getFormattedTitlePrefix() . ' - ';
         $content->titleLong       .= str_replace(
             '%PREFIX%',
-            $amendment->getMyMotion()->titlePrefix,
+            $amendment->getMyMotion()->getFormattedTitlePrefix(),
             \Yii::t('amend', 'amendment_for_prefix')
         );
         $content->publicationDate = Tools::formatMysqlDate($amendment->datePublication);
@@ -103,12 +104,16 @@ class LayoutHelper
             $ppSections = self::getVisibleProposedProcedureSections($amendment, null);
             foreach ($ppSections as $ppSection) {
                 $ppSection['section']->setTitlePrefix($ppSection['title']);
-                $ppSection['section']->printAmendmentTeX(false, $content, $amendment->getMyConsultation());
+                $ppSection['section']->printAmendmentTeX(false, $content);
             }
         }
 
         foreach ($amendment->getSortedSections(false) as $section) {
-            $section->getSectionType()->printAmendmentTeX(false, $content);
+            $sectionType = $section->getSectionType();
+            if ($amendment->getExtraDataKey(Amendment::EXTRA_DATA_VIEW_MODE_FULL)) {
+                $sectionType->setDefaultToOnlyDiff(false);
+            }
+            $sectionType->printAmendmentTeX(false, $content);
         }
 
         if ($amendment->changeExplanation !== '') {
@@ -134,24 +139,26 @@ class LayoutHelper
 
     public static function printToPDF(IPdfWriter $pdf, IPDFLayout $pdfLayout, Amendment $amendment): void
     {
-        error_reporting(error_reporting() & ~E_DEPRECATED); // TCPDF ./. PHP 7.2
-
         $pdfLayout->printAmendmentHeader($amendment);
 
         if ($amendment->changeEditorial !== '') {
             $pdfLayout->printSectionHeading(\Yii::t('amend', 'editorial_hint'));
-            $pdf->writeHTMLCell(170, '', 27, '', $amendment->changeEditorial, 0, 1, 0, true, '', true);
+            $pdf->writeHTMLCell(170, 0, 27, null, $amendment->changeEditorial, 0, 1, false, true, '', true);
             $pdf->Ln(7);
         }
 
         foreach ($amendment->getSortedSections(false) as $section) {
-            $section->getSectionType()->printAmendmentToPDF($pdfLayout, $pdf);
+            $sectionType = $section->getSectionType();
+            if ($amendment->getExtraDataKey(Amendment::EXTRA_DATA_VIEW_MODE_FULL)) {
+                $sectionType->setDefaultToOnlyDiff(false);
+            }
+            $sectionType->printAmendmentToPDF($pdfLayout, $pdf);
         }
 
         if ($amendment->changeExplanation !== '') {
             $pdfLayout->printSectionHeading(\Yii::t('amend', 'reason'));
             $pdf->Ln(0);
-            $pdf->writeHTMLCell(0, '', '', '', $amendment->changeExplanation, 0, 1, 0, true, '', true);
+            $pdf->writeHTMLCell(0, 0, null, null, $amendment->changeExplanation, 0, 1, false, true, '', true);
             $pdf->Ln(7);
         }
 
@@ -163,7 +170,7 @@ class LayoutHelper
                 $supportersStr[] = Html::encode($supp->getNameWithOrga());
             }
             $listStr = implode(', ', $supportersStr) . $limitedSupporters->truncatedToString(',');
-            $pdf->writeHTMLCell(170, '', 27, '', $listStr, 0, 1, 0, true, '', true);
+            $pdf->writeHTMLCell(170, 0, 27, null, $listStr, 0, 1, false, true, '', true);
             $pdf->Ln(7);
         }
     }
@@ -210,5 +217,64 @@ class LayoutHelper
         \Yii::$app->cache->set($amendment->getPdfCacheKey(), $pdf);
 
         return $pdf;
+    }
+
+    public static function printAmendmentToOdt(Amendment $amendment, \CatoTH\HTML2OpenDocument\Text $doc): void
+    {
+        $initiators = [];
+        foreach ($amendment->amendmentSupporters as $supp) {
+            if ($supp->role === ISupporter::ROLE_INITIATOR) {
+                $initiators[] = $supp->getNameWithOrga();
+            }
+        }
+        if (count($initiators) === 1) {
+            $initiatorStr = \Yii::t('export', 'InitiatorSingle');
+        } else {
+            $initiatorStr = \Yii::t('export', 'InitiatorMulti');
+        }
+        $initiatorStr .= ': ' . implode(', ', $initiators);
+        $doc->addReplace('/\{\{ANTRAGSGRUEN:TITLE\}\}/siu', $amendment->getTitle());
+        $doc->addReplace('/\{\{ANTRAGSGRUEN:INITIATORS\}\}/siu', $initiatorStr);
+        if ($amendment->getMyMotionType()->getSettingsObj()->showProposalsInExports && $amendment->proposalStatus !== null && $amendment->isProposalPublic()) {
+            $doc->addReplace('/\{\{ANTRAGSGRUEN:STATUS\}\}/siu', \Yii::t('export', 'proposed_procedure') . ': ' . strip_tags($amendment->getFormattedProposalStatus(false)));
+        } else {
+            $doc->addReplace('/\{\{ANTRAGSGRUEN:STATUS\}\}/siu', '');
+        }
+
+        if ($amendment->changeEditorial !== '') {
+            $doc->addHtmlTextBlock('<h2>' . Html::encode(\Yii::t('amend', 'editorial_hint')) . '</h2>', false);
+            $editorial = HTMLTools::correctHtmlErrors($amendment->changeEditorial);
+            $doc->addHtmlTextBlock($editorial, false);
+        }
+
+        if ($amendment->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+            $ppSections = self::getVisibleProposedProcedureSections($amendment, null);
+            foreach ($ppSections as $ppSection) {
+                $ppSection['section']->setTitlePrefix($ppSection['title']);
+                $ppSection['section']->printAmendmentToODT($doc);
+            }
+        }
+
+        foreach ($amendment->getSortedSections(false) as $section) {
+            $section->getSectionType()->printAmendmentToODT($doc);
+        }
+
+        if ($amendment->changeExplanation !== '') {
+            $doc->addHtmlTextBlock('<h2>' . Html::encode(\Yii::t('amend', 'reason')) . '</h2>', false);
+            $explanation = HTMLTools::correctHtmlErrors($amendment->changeExplanation);
+            $doc->addHtmlTextBlock($explanation, false);
+        }
+
+        $limitedSupporters = LimitedSupporterList::createFromIMotion($amendment);
+        if (count($limitedSupporters->supporters) > 0) {
+            $doc->addHtmlTextBlock('<h2>' . Html::encode(\Yii::t('motion', 'supporters_heading')) . '</h2>', false);
+
+            $supps = [];
+            foreach ($limitedSupporters->supporters as $supp) {
+                $supps[] = $supp->getNameWithOrga();
+            }
+
+            $doc->addHtmlTextBlock('<p>' . Html::encode(implode('; ', $supps)) . $limitedSupporters->truncatedToString(';') . '</p>', false);
+        }
     }
 }

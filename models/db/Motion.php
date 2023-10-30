@@ -2,22 +2,20 @@
 
 namespace app\models\db;
 
+use app\models\forms\MotionDeepCopy;
 use app\models\proposedProcedure\Agenda;
-use app\models\settings\PrivilegeQueryContext;
-use app\models\settings\Privileges;
+use app\models\settings\{PrivilegeQueryContext, Privileges, AntragsgruenApp, MotionSection as MotionSectionSettings};
 use app\models\notifications\{MotionProposedProcedure,
     MotionPublished,
     MotionSubmitted as MotionSubmittedNotification,
     MotionWithdrawn as MotionWithdrawnNotification,
     MotionEdited as MotionEditedNotification};
-use app\models\settings\AntragsgruenApp;
 use app\components\{HashedStaticFileCache, MotionSorter, RequestContext, RSSExporter, Tools, UrlHelper};
 use app\models\exceptions\{FormError, Internal, NotAmendable, NotFound};
 use app\models\layoutHooks\Layout;
 use app\models\mergeAmendments\Draft;
 use app\models\events\MotionEvent;
 use app\models\sectionTypes\{Image, ISectionType, PDF};
-use app\models\settings\MotionSection as MotionSectionSettings;
 use app\models\supportTypes\SupportBase;
 use Symfony\Component\String\Slugger\AsciiSlugger;
 use yii\db\ActiveQuery;
@@ -87,7 +85,8 @@ class Motion extends IMotion implements IRSSItem
             IMotion::STATUS_MODIFIED_ACCEPTED,
             IMotion::STATUS_REFERRED,
             IMotion::STATUS_VOTE,
-            IMotion::STATUS_OBSOLETED_BY,
+            IMotion::STATUS_OBSOLETED_BY_AMENDMENT,
+            IMotion::STATUS_OBSOLETED_BY_MOTION,
             IMotion::STATUS_CUSTOM_STRING,
         ];
     }
@@ -258,7 +257,30 @@ class Motion extends IMotion implements IRSSItem
 
     public function getReplacedByMotions(): ActiveQuery
     {
-        return $this->hasMany(Motion::class, ['parentMotionId' => 'id']);
+        return $this->hasMany(Motion::class, ['parentMotionId' => 'id'])
+            ->andWhere(Motion::tableName() . '.status != ' . Motion::STATUS_DELETED);
+    }
+
+    /**
+     * @return Motion[]
+     */
+    public function getReplacedByMotionsWithinConsultation(): array
+    {
+        $motions = [];
+        if ($this->getMyConsultation()->hasPreloadedMotionData()) {
+            foreach ($this->getMyConsultation()->motions as $motion) {
+                if ($motion->parentMotionId === $this->id) {
+                    $motions[] = $motion;
+                }
+            }
+        } else {
+            foreach ($this->replacedByMotions as $motion) {
+                if ($motion->consultationId === $this->consultationId) {
+                    $motions[] = $motion;
+                }
+            }
+        }
+        return $motions;
     }
 
     public function getSpeechQueues(): ActiveQuery
@@ -357,6 +379,20 @@ class Motion extends IMotion implements IRSSItem
     }
 
     /**
+     * @return Motion[]
+     */
+    public static function getObsoletedByMotions(Motion $motion): array
+    {
+        $query = Motion::find()
+            ->where('motion.status = ' . intval(IMotion::STATUS_OBSOLETED_BY_MOTION))
+            ->andWhere('motion.statusString = ' . intval($motion->id));
+        /** @var Motion[] $motions */
+        $motions = $query->all();
+
+        return $motions;
+    }
+
+    /**
      * @return string ("Application: John <Doe>")
      */
     public function getTitleWithIntro(): string
@@ -379,7 +415,7 @@ class Motion extends IMotion implements IRSSItem
             return $this->getTitleWithIntro();
         }
 
-        $name = $this->titlePrefix;
+        $name = $this->getFormattedTitlePrefix();
         if (grapheme_strlen($name) > 1 && !in_array(grapheme_substr($name, grapheme_strlen($name) - 1, 1), [':', '.'])) {
             $name .= ':';
         }
@@ -488,7 +524,7 @@ class Motion extends IMotion implements IRSSItem
         }
 
         foreach ($this->motionSupporters as $supp) {
-            if ($supp->role === MotionSupporter::ROLE_INITIATOR && $supp->userId == $user->id) {
+            if ($supp->role === MotionSupporter::ROLE_INITIATOR && $supp->userId === $user->id) {
                 return true;
             }
         }
@@ -573,11 +609,33 @@ class Motion extends IMotion implements IRSSItem
     /**
      * @return Motion[]
      */
-    public function getVisibleReplacedByMotions(): array
+    public function getVisibleReplacedByMotions(bool $hideIfReplacedByResolution = true): array
+    {
+        $invisibleStatuses = $this->getMyConsultation()->getStatuses()->getInvisibleMotionStatuses();
+        if (!$hideIfReplacedByResolution) {
+            $invisibleStatuses[] = IMotion::STATUS_RESOLUTION_FINAL;
+            $invisibleStatuses[] = IMotion::STATUS_RESOLUTION_PRELIMINARY;
+        }
+
+        return $this->getReplacedByMotionsWithoutStatus($invisibleStatuses);
+    }
+
+    public function getReadableReplacedByMotions(): array
+    {
+        $unreadableStatuses = $this->getMyConsultation()->getStatuses()->getInvisibleMotionStatuses();
+
+        return $this->getReplacedByMotionsWithoutStatus($unreadableStatuses);
+    }
+
+    /**
+     * @param int[] $filteredOutStatuses
+     * @return Motion[]
+     */
+    private function getReplacedByMotionsWithoutStatus(array $filteredOutStatuses): array
     {
         $replacedByMotions = [];
         foreach ($this->replacedByMotions as $replMotion) {
-            if (!in_array($replMotion->status, $this->getMyConsultation()->getStatuses()->getInvisibleMotionStatuses())) {
+            if (!in_array($replMotion->status, $filteredOutStatuses)) {
                 $replacedByMotions[] = $replMotion;
             }
         }
@@ -611,11 +669,6 @@ class Motion extends IMotion implements IRSSItem
             'parentMotionId' => $this->id,
             'status'         => Motion::STATUS_DRAFT,
         ]);
-    }
-
-    public function isResolution(): bool
-    {
-        return in_array($this->status, [static::STATUS_RESOLUTION_FINAL, static::STATUS_RESOLUTION_PRELIMINARY]);
     }
 
     public function getNumberOfCountableLines(): int
@@ -939,7 +992,7 @@ class Motion extends IMotion implements IRSSItem
     public function getFilenameBase(bool $noUmlaut): string
     {
         $motionTitle = (grapheme_strlen($this->title) > 100 ? grapheme_substr($this->title, 0, 100) : $this->title);
-        $title       = $this->titlePrefix . ' ' . $motionTitle;
+        $title       = $this->getFormattedTitlePrefix() . ' ' . $motionTitle;
 
         return Tools::sanitizeFilename($title, $noUmlaut);
     }
@@ -971,8 +1024,8 @@ class Motion extends IMotion implements IRSSItem
 
     public function getBreadcrumbTitle(): string
     {
-        if ($this->titlePrefix && !$this->getMyConsultation()->getSettings()->hideTitlePrefix) {
-            return $this->titlePrefix;
+        if ($this->getFormattedTitlePrefix() && !$this->getMyConsultation()->getSettings()->hideTitlePrefix) {
+            return $this->getFormattedTitlePrefix();
         } else {
             return $this->getMyMotionType()->titleSingular;
         }
@@ -1060,7 +1113,7 @@ class Motion extends IMotion implements IRSSItem
     /**
      * @throws FormError
      */
-    public function setMotionType(ConsultationMotionType $motionType)
+    public function setMotionType(ConsultationMotionType $motionType): void
     {
         if (!$this->getMyMotionType()->isCompatibleTo($motionType)) {
             throw new FormError('This motion cannot be changed to the type ' . $motionType->titleSingular);
@@ -1092,7 +1145,9 @@ class Motion extends IMotion implements IRSSItem
 
         $consultation = $this->getMyConsultation();
         $screeningMotionsShown = $consultation->getSettings()->screeningMotionsShown;
-        $statusNames           = $consultation->getStatuses()->getStatusNames();
+        $statusNames = $consultation->getStatuses()->getStatusNames();
+
+        $statusString = $this->statusString;
         if ($this->isInScreeningProcess()) {
             $status .= '<span class="unscreened">' . Html::encode($statusNames[$this->status]) . '</span>';
         } elseif ($this->status === Motion::STATUS_SUBMITTED_SCREENED && $screeningMotionsShown) {
@@ -1102,11 +1157,29 @@ class Motion extends IMotion implements IRSSItem
             $status .= ' <small>(' . \Yii::t('motion', 'supporting_permitted') . ': ';
             $policy = $this->getMyMotionType()->getMotionSupportPolicy();
             $status .= $policy::getPolicyName() . ')</small>';
+        } elseif ($this->status === Motion::STATUS_OBSOLETED_BY_MOTION) {
+            $othermot = $this->getMyConsultation()->getMotion(intval($this->statusString));
+            if ($othermot) {
+                $status = \Yii::t('amend', 'obsoleted_by') . ': ';
+                $status .= Html::a(Html::encode($othermot->getTitleWithPrefix()), UrlHelper::createMotionUrl($othermot));
+                $statusString = null;
+            } else {
+                $status .= Html::encode($statusNames[$this->status]);
+            }
+        } elseif ($this->status === Motion::STATUS_OBSOLETED_BY_AMENDMENT) {
+            $otheramend = $this->getMyConsultation()->getAmendment(intval($this->statusString));
+            if ($otheramend) {
+                $status = \Yii::t('amend', 'obsoleted_by') . ': ';
+                $status .= Html::a(Html::encode($otheramend->getTitleWithPrefix()), UrlHelper::createAmendmentUrl($otheramend));
+                $statusString = null;
+            } else {
+                $status .= Html::encode($statusNames[$this->status]);
+            }
         } else {
             $status .= Html::encode($statusNames[$this->status]);
         }
-        if ($this->statusString !== null && trim($this->statusString) !== '') {
-            $status .= ' <small>(' . Html::encode($this->statusString) . ')</string>';
+        if ($statusString) {
+            $status .= ' <small>(' . Html::encode($statusString) . ')</string>';
         }
 
         return Layout::getFormattedMotionStatus($status, $this);
@@ -1144,6 +1217,71 @@ class Motion extends IMotion implements IRSSItem
         return null;
     }
 
+    // Hint: All statuses selectable except STATUS_VOTE
+    public const FOLLOWABLE_PROPOSAL_STATUSES = [
+        self::STATUS_MODIFIED_ACCEPTED,
+        self::STATUS_ACCEPTED,
+        self::STATUS_REJECTED,
+        self::STATUS_REFERRED,
+        self::STATUS_OBSOLETED_BY_MOTION,
+        self::STATUS_OBSOLETED_BY_AMENDMENT,
+        self::STATUS_CUSTOM_STRING,
+    ];
+
+    /**
+     * @param MotionSupporter[] $newInitiators
+     */
+    public function followProposalAndCreateNewVersion(string $versionId, int $acceptStatus = self::STATUS_ACCEPTED, ?array $newInitiators = null): Motion
+    {
+        if (!in_array($this->proposalStatus, [self::STATUS_MODIFIED_ACCEPTED, self::STATUS_ACCEPTED, self::STATUS_REJECTED, self::STATUS_CUSTOM_STRING])) {
+            throw new FormError('No proposal set');
+        }
+
+        $newVersion = MotionDeepCopy::copyMotion(
+            $this,
+            $this->getMyMotionType(),
+            $this->agendaItem,
+            $this->titlePrefix,
+            $versionId,
+            true
+        );
+
+        if ($newInitiators !== null) {
+            foreach ($newVersion->motionSupporters as $supporter) {
+                $supporter->delete();
+            }
+            foreach ($newInitiators as $newInitiator) {
+                $newInitiator->motionId = $newVersion->id;
+                $newInitiator->save();
+            }
+        }
+
+        $newVersion->status = match ($this->proposalStatus) {
+            self::STATUS_MODIFIED_ACCEPTED, self::STATUS_ACCEPTED => $acceptStatus,
+            default => $this->proposalStatus,
+        };
+        if (in_array($this->proposalStatus, [self::STATUS_OBSOLETED_BY_MOTION, self::STATUS_OBSOLETED_BY_AMENDMENT])) {
+            $newVersion->statusString = $this->proposalComment;
+        }
+        if ($this->proposalStatus === self::STATUS_CUSTOM_STRING) {
+            $newVersion->statusString = $this->proposalComment;
+        }
+        if ($this->proposalStatus === self::STATUS_MODIFIED_ACCEPTED && ($modified = $this->getMyProposalReference())) {
+            foreach ($newVersion->sections as $section) {
+                $amendmentSection = $modified->getSection($section->sectionId);
+                if ($amendmentSection) {
+                    $section->setData($amendmentSection->getData());
+                    $section->save();
+                }
+            }
+        }
+        $newVersion->proposalStatus = null;
+        $newVersion->proposalComment = null;
+        $newVersion->save();
+
+        return $newVersion;
+    }
+
     public function getLink(bool $absolute = false): string
     {
         $url = UrlHelper::createMotionUrl($this);
@@ -1174,7 +1312,7 @@ class Motion extends IMotion implements IRSSItem
     {
         $data = [
             'title'            => $this->title,
-            'title_prefix'     => $this->titlePrefix,
+            'title_prefix'     => $this->getFormattedTitlePrefix(),
             'url'              => $this->getLink(true),
             'initiators'       => [],
             'sections'         => [],

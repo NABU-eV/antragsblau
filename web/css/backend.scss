@@ -37,11 +37,70 @@
   .saveRow {
     text-align: center;
   }
+
+  .selectRow {
+    legend {
+      font-weight: bold;
+    }
+  }
+}
+
+#tagsEditForm {
+  .editList {
+    width: 100%;
+    @media screen and (min-width: $screenMinWith) {
+      width: 50%;
+    }
+
+    li {
+      display: flex;
+      flex-direction: row;
+      width: 100%;
+    }
+
+    .drag-handle {
+      cursor: move;
+      flex-basis: 80px;
+    }
+
+    .drag-handle {
+      cursor: move;
+      flex-basis: 22px;
+      font-size: 18px;
+      padding-top: 2px;
+      text-align: center;
+      margin-right: 10px;
+    }
+
+    .tagTitle {
+      flex-grow: 1;
+    }
+  }
+
+  .adderRow {
+    width: 100%;
+    @media screen and (min-width: $screenMinWith) {
+      width: 50%;
+    }
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .tagAdderBtn {
+    font-weight: normal;
+    font-size: 0.9em;
+  }
 }
 
 .siteaccAdminsForm {
   .ppReplyToOpener {
     padding: 0 5px;
+    font-weight: normal;
+  }
+}
+
+.consultationCreateForm {
+  label {
+    display: block;
     font-weight: normal;
   }
 }
@@ -240,6 +299,10 @@ label.legend {
       }
     }
   }
+
+  .motionListLink {
+    text-align: right;
+  }
 }
 
 #consultationsList {
@@ -273,14 +336,14 @@ label.legend {
       right: 10px;
     }
 
-    html.no-touchevents & {
+    @media (hover: hover) {
       .delbox {
-        visibility: hidden;
+        opacity: 0;
       }
 
-      &:hover {
+      &:hover, &:focus-within {
         .delbox {
-          visibility: visible;
+          opacity: 1;
         }
       }
     }
@@ -336,6 +399,14 @@ label.legend {
     }
     .quotaSelector {
       vertical-align: top;
+    }
+  }
+
+  .showResolutionsSeparateHolder {
+    padding-left: 20px;
+    margin-bottom: 15px;
+    label {
+      display: block;
     }
   }
 }
@@ -970,6 +1041,10 @@ label.legend {
     color: red;
     font-weight: bold;
   }
+
+  label {
+    display: block;
+  }
 }
 
 .adminTypeForm {
@@ -1094,6 +1169,9 @@ label.legend {
   .filtersTop {
     display: flex;
     flex-direction: row;
+    @media screen and (max-width: 1100px) {
+      flex-wrap: wrap;
+    }
 
     > * {
       margin-right: 20px;
@@ -1170,6 +1248,12 @@ label.legend {
     }
   }
 
+  .todo {
+    font-style: italic;
+    font-size: 0.8em;
+    color: gray;
+  }
+
   td.exportCol {
     font-size: 0.9em;
   }
@@ -1237,6 +1321,28 @@ label.legend {
 
   .respUserNone {
     font-style: italic;
+  }
+}
+
+.adminMotionListActions {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+
+  .selectAll {
+    flex-basis: 200px;
+    flex-grow: 0.1;
+    line-height: 40px;
+    vertical-align: middle;
+
+    .btn {
+      font-weight: normal;
+    }
+  }
+
+  .actionButtons {
+    flex: 1;
+    text-align: right;
   }
 }
 
@@ -1409,24 +1515,24 @@ label.legend {
       margin-top: 5px;
     }
 
-    html.no-touchevents & {
+    @media (hover: hover) {
       > li {
         .moveHandle {
-          display: none;
+          opacity: 0;
         }
 
         .delSupporter {
-          visibility: hidden;
+          opacity: 0;
         }
       }
 
-      > li:hover {
+      > li:hover, > li:focus-within {
         .moveHandle {
-          display: inherit;
+          opacity: 1;
         }
 
         .delSupporter {
-          visibility: visible;
+          opacity: 1;
         }
       }
     }
@@ -1617,6 +1723,14 @@ label.legend {
         white-space: nowrap;
       }
     }
+    .orgaOpenerHolder {
+      float: left;
+      text-align: left;
+      button {
+        margin-top: 5px;
+        font-weight: normal;
+      }
+    }
   }
   ul.userList, ul.groupList {
     display: block;
@@ -1668,7 +1782,6 @@ label.legend {
     padding: 2px;
   }
 
-
   .groupInfo {
     flex-grow: 1;
     .name {
@@ -1698,7 +1811,7 @@ label.legend {
     opacity: 0.5;
     margin-right: -15px;
 
-    html.no-touchevents & {
+    @media (hover: hover) {
       opacity: 0;
 
       &:active, &:focus {
@@ -1706,10 +1819,11 @@ label.legend {
       }
     }
   }
-
-  html.no-touchevents & li:hover {
-    .btnRemove {
-      opacity: 0.5;
+  @media (hover: hover) {
+    li:hover {
+      .btnRemove {
+        opacity: 0.5;
+      }
     }
   }
 
@@ -1736,8 +1850,25 @@ label.legend {
   }
 }
 
-.editUserGroupModal {
+.editOrganisationModal {
+  table {
+    width: 100%;
+  }
+  td {
+    padding-top: 5px;
+  }
+  td:first-child {
+    padding-right: 5px;
+  }
+  .btnAdd {
+    font-weight: normal;
+  }
+  .btnRemove {
+    color: $colorDelLink;
+  }
+}
 
+.editUserGroupModal {
   label {
     font-weight: normal;
     display: block;
@@ -1770,6 +1901,12 @@ label.legend {
     .restrictedTo {
       min-height: 100px;
     }
+  }
+}
+
+.editUserModal {
+  label.disabled {
+    opacity: 0.5;
   }
 }
 

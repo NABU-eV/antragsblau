@@ -1,31 +1,29 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\models;
 
-use app\models\settings\AntragsgruenApp;
-use app\models\settings\PrivilegeQueryContext;
-use app\models\settings\Privileges;
-use app\components\{Tools, UrlHelper};
-use app\models\db\{Amendment, AmendmentComment, Consultation, Motion, MotionComment, User};
+use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
+use app\components\{HashedStaticCache, MotionSorter, Tools, UrlHelper};
+use app\models\db\{Amendment, AmendmentComment, Consultation, IMotion, Motion, MotionComment, User};
 
 class AdminTodoItem
 {
-    /** @var string */
-    public string $todoId;
-    public string $title;
-    public string $action;
-    public string $link;
-    public string $description;
-    public int $timestamp;
+    public const TARGET_MOTION = 1;
+    public const TARGET_AMENDMENT = 2;
 
-    public function __construct(string $todoId, string $title, string $action, string $link, int $timestamp, ?string $description = null)
-    {
-        $this->todoId      = $todoId;
-        $this->link        = $link;
-        $this->title       = $title;
-        $this->action      = $action;
-        $this->timestamp   = $timestamp;
-        $this->description = $description;
+    public function __construct(
+        public string $todoId,
+        public string $title,
+        public string $action,
+        public string $link,
+        public int $timestamp,
+        public string $description,
+        public ?int $targetType,
+        public ?int $targetId,
+        public ?string $titlePrefix
+    ) {
     }
 
     private static array $todoCache = [];
@@ -53,7 +51,10 @@ class AdminTodoItem
                     '',
                     UrlHelper::createUrl(['/admin/motion-type/type', 'motionTypeId' => $motionType->id]),
                     0,
-                    $description
+                    $description,
+                    null,
+                    null,
+                    null,
                 );
             }
         }
@@ -80,7 +81,10 @@ class AdminTodoItem
                 str_replace('%TYPE%', $motion->getMyMotionType()->titleSingular, \Yii::t('admin', 'todo_motion_screen')),
                 UrlHelper::createUrl(['/admin/motion/update', 'motionId' => $motion->id]),
                 Tools::dateSql2timestamp($motion->dateCreation),
-                $description
+                $description,
+                self::TARGET_MOTION,
+                $motion->id,
+                $motion->getFormattedTitlePrefix(),
             );
         }
         return $todo;
@@ -106,7 +110,10 @@ class AdminTodoItem
                 \Yii::t('admin', 'todo_amendment_screen'),
                 UrlHelper::createUrl(['/admin/amendment/update', 'amendmentId' => $amend->id]),
                 Tools::dateSql2timestamp($amend->dateCreation),
-                $description
+                $description,
+                self::TARGET_AMENDMENT,
+                $amend->id,
+                $amend->getFormattedTitlePrefix(),
             );
         }
         return $todo;
@@ -132,7 +139,10 @@ class AdminTodoItem
                 \Yii::t('admin', 'todo_comment_screen'),
                 $comment->getLink(),
                 Tools::dateSql2timestamp($comment->dateCreation),
-                $description
+                $description,
+                self::TARGET_MOTION,
+                $comment->motionId,
+                $comment->getIMotion()->getFormattedTitlePrefix(),
             );
         }
         return $todo;
@@ -158,7 +168,10 @@ class AdminTodoItem
                 \Yii::t('admin', 'todo_comment_screen'),
                 $comment->getLink(),
                 Tools::dateSql2timestamp($comment->dateCreation),
-                $description
+                $description,
+                self::TARGET_AMENDMENT,
+                $comment->amendmentId,
+                $comment->getIMotion()->getFormattedTitlePrefix(),
             );
         }
         return $todo;
@@ -166,8 +179,13 @@ class AdminTodoItem
 
     private static function getUnsortedItems(Consultation $consultation): array
     {
+        $user = User::getCurrentUser();
+        if (!$user) {
+            return [];
+        }
+
         foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
-            $todo = $plugin::getAdminTodoItems($consultation, User::getCurrentUser());
+            $todo = $plugin::getAdminTodoItems($consultation, $user);
             if ($todo !== null) {
                 return $todo;
             }
@@ -197,13 +215,64 @@ class AdminTodoItem
         }
 
         $todo = self::getUnsortedItems($consultation);
-
-        usort($todo, function (AdminTodoItem $todo1, AdminTodoItem $todo2) {
-            return $todo1->timestamp <=> $todo2->timestamp;
+        usort($todo, function (AdminTodoItem $todo1, AdminTodoItem $todo2): int {
+            if ($todo1->titlePrefix === $todo2->titlePrefix) {
+                return $todo1->timestamp <=> $todo2->timestamp;
+            } elseif ($todo1->titlePrefix === null) {
+                return -1;
+            } elseif ($todo2->titlePrefix === null) {
+                return 1;
+            } else {
+                return MotionSorter::getSortedMotionsSort($todo1->titlePrefix, $todo2->titlePrefix);
+            }
         });
 
         self::$todoCache[$consultation->id] = $todo;
 
+        $cachedCount = HashedStaticCache::getCache('getConsultationTodoCount', [User::getCurrentUser()?->id]);
+        if ($cachedCount !== count($todo)) {
+            HashedStaticCache::setCache('getConsultationTodoCount', [User::getCurrentUser()?->id], count($todo), 30);
+        }
+
         return $todo;
+    }
+
+    public static function getConsultationTodoCount(?Consultation $consultation): int
+    {
+        $count = HashedStaticCache::getCache('getConsultationTodoCount', [User::getCurrentUser()?->id]);
+        if ($count === false) {
+            $count = count(static::getConsultationTodos($consultation));
+            HashedStaticCache::setCache('getConsultationTodoCount', [User::getCurrentUser()?->id], $count, 30);
+        }
+        return $count;
+    }
+
+    public static function flushConsultationTodoCount(): void
+    {
+        HashedStaticCache::flushCache('getConsultationTodoCount', [User::getCurrentUser()?->id]);
+    }
+
+    /**
+     * @param IMotion $IMotion
+     *
+     * @return AdminTodoItem[]
+     */
+    public static function getTodosForIMotion(IMotion $IMotion): array
+    {
+        return array_values(array_filter(
+            self::getConsultationTodos($IMotion->getMyConsultation()),
+            fn(AdminTodoItem $item): bool => $item->isForIMotion($IMotion)
+        ));
+    }
+
+    public function isForIMotion(IMotion $IMotion): bool
+    {
+        if (is_a($IMotion, Motion::class) && $this->targetType === self::TARGET_MOTION && $this->targetId === $IMotion->id) {
+            return true;
+        }
+        if (is_a($IMotion, Amendment::class) && $this->targetType === self::TARGET_AMENDMENT && $this->targetId === $IMotion->id) {
+            return true;
+        }
+        return false;
     }
 }

@@ -29,8 +29,8 @@ class LayoutHelper
         $return    .= '<a href="' . Html::encode($motionUrl) . '" class="motionLink' . $motion->id . '">';
 
         $return .= '<span class="glyphicon glyphicon-file motionIcon" aria-hidden="true"></span>';
-        if (!$consultation->getSettings()->hideTitlePrefix && trim($motion->titlePrefix) !== '') {
-            $return .= '<span class="motionPrefix">' . Html::encode($motion->titlePrefix) . '</span>';
+        if (!$consultation->getSettings()->hideTitlePrefix && trim($motion->getFormattedTitlePrefix()) !== '') {
+            $return .= '<span class="motionPrefix">' . Html::encode($motion->getFormattedTitlePrefix()) . '</span>';
         }
 
         $title  = (trim($motion->title) === '' ? '-' : $motion->title);
@@ -56,22 +56,24 @@ class LayoutHelper
         $return .= '<span class="sr-only">' . \Yii::t('motion', 'created_on_str') . '</span> ' .
                    Tools::formatMysqlDateWithAria($motion->dateCreation) . '</p>' . "\n";
 
-        $return .= '<p class="info">';
-        $return .= Html::encode($motion->getInitiatorsStr());
-        if ($motion->status === Motion::STATUS_WITHDRAWN) {
-            $statusName = Html::encode($motion->getMyConsultation()->getStatuses()->getStatusName($motion->status));
-            $return     .= ' <span class="status">(' . $statusName . ')</span>';
+        if (!$motion->isResolution()) {
+            $return .= '<p class="info">';
+            $return .= Html::encode($motion->getInitiatorsStr());
+            if ($motion->status === Motion::STATUS_WITHDRAWN) {
+                $statusName = Html::encode($motion->getMyConsultation()->getStatuses()->getStatusName($motion->status));
+                $return .= ' <span class="status">(' . $statusName . ')</span>';
+            }
+            if ($motion->status === Motion::STATUS_MOVED) {
+                $statusName = LayoutHelper::getMotionMovedStatusHtml($motion);
+                $return .= ' <span class="status">(' . $statusName . ')</span>';
+            }
+            if ($motion->parentMotionId && $motion->replacedMotion && $motion->replacedMotion->status === Motion::STATUS_MOVED) {
+                $statusName = \Yii::t('motion', 'moved_from') . ': ';
+                $statusName .= Html::a(Html::encode($motion->replacedMotion->getFormattedTitlePrefix()), UrlHelper::createMotionUrl($motion->replacedMotion));
+                $return .= ' <span class="status">(' . $statusName . ')</span>';
+            }
+            $return .= '</p>';
         }
-        if ($motion->status === Motion::STATUS_MOVED) {
-            $statusName = LayoutHelper::getMotionMovedStatusHtml($motion);
-            $return     .= ' <span class="status">(' . $statusName . ')</span>';
-        }
-        if ($motion->parentMotionId && $motion->replacedMotion && $motion->replacedMotion->status === Motion::STATUS_MOVED) {
-            $statusName = \Yii::t('motion', 'moved_from') . ': ';
-            $statusName .= Html::a(Html::encode($motion->replacedMotion->titlePrefix), UrlHelper::createMotionUrl($motion->replacedMotion));
-            $return     .= ' <span class="status">(' . $statusName . ')</span>';
-        }
-        $return .= '</p>';
 
         return \app\models\layoutHooks\Layout::getConsultationMotionLineContent($return, $motion);
     }
@@ -84,7 +86,7 @@ class LayoutHelper
         $privateAmendmentComments = AmendmentComment::getAllForUserAndConsultationByMotion($consultation, User::getCurrentUser(), AmendmentComment::STATUS_PRIVATE);
         $return .= LayoutHelper::getPrivateCommentIndicator($amendment, [], $privateAmendmentComments);
 
-        $title  = (trim($amendment->titlePrefix) === '' ? \Yii::t('amend', 'amendment') : $amendment->titlePrefix);
+        $title  = (trim($amendment->getFormattedTitlePrefix()) === '' ? \Yii::t('amend', 'amendment') : $amendment->getFormattedTitlePrefix());
         $return .= '<a href="' . Html::encode(UrlHelper::createAmendmentUrl($amendment)) . '" ' .
                    'class="amendmentTitle amendment' . $amendment->id . '">' . Html::encode($title) . '</a>';
 
@@ -119,8 +121,8 @@ class LayoutHelper
         $return    .= '<a href="' . Html::encode($amendmentUrl) . '" class="amendmentLink' . $amendment->id . '">';
 
         $return .= '<span class="glyphicon glyphicon-file motionIcon" aria-hidden="true"></span>';
-        if (!$consultation->getSettings()->hideTitlePrefix && trim($amendment->titlePrefix) !== '') {
-            $return .= '<span class="motionPrefix">' . Html::encode($amendment->titlePrefix) . '</span>';
+        if (!$consultation->getSettings()->hideTitlePrefix && trim($amendment->getFormattedTitlePrefix()) !== '') {
+            $return .= '<span class="motionPrefix">' . Html::encode($amendment->getFormattedTitlePrefix()) . '</span>';
         }
 
         $title  = (trim($amendment->getMyMotion()->title) === '' ? '-' : $amendment->getMyMotion()->title);
@@ -156,7 +158,7 @@ class LayoutHelper
         $statusName = \Yii::t('motion', 'moved_to');
         $movedTos   = [];
         foreach ($motion->getVisibleReplacedByMotions() as $newMotion) {
-            $movedTos[] = Html::a(Html::encode($newMotion->titlePrefix), UrlHelper::createMotionUrl($newMotion));
+            $movedTos[] = Html::a(Html::encode($newMotion->getFormattedTitlePrefix()), UrlHelper::createMotionUrl($newMotion));
         }
         if (count($movedTos) > 0) {
             $statusName .= ': ' . implode(', ', $movedTos);
@@ -253,7 +255,7 @@ class LayoutHelper
         return $return;
     }
 
-    public static function showAgendaItem(ConsultationAgendaItem $agendaItem, Consultation $consultation, bool $admin): IMotionList
+    public static function showAgendaItem(ConsultationAgendaItem $agendaItem, Consultation $consultation, bool $isResolutionList, bool $admin): IMotionList
     {
         $showMotions = !in_array($consultation->getSettings()->startLayoutType, [
             ConsultationSettings::START_LAYOUT_AGENDA_LONG,
@@ -357,7 +359,9 @@ class LayoutHelper
         if ($showMotions) {
             $imotions = [];
             foreach ($agendaItem->getIMotionsFromConsultation() as $imotion) {
-                $imotions[] = $imotion;
+                if (($isResolutionList && $imotion->isResolution()) || (!$isResolutionList && !$imotion->isResolution())) {
+                    $imotions[] = $imotion;
+                }
             }
             $imotions = MotionSorter::getSortedIMotionsFlat($consultation, $imotions);
             if (count($imotions) > 0) {
@@ -377,7 +381,7 @@ class LayoutHelper
         echo '</div>';
 
         $children = ConsultationAgendaItem::getItemsByParent($consultation, $agendaItem->id);
-        $agendaListShownMotions = static::showAgendaList($children, $consultation, $admin, false);
+        $agendaListShownMotions = static::showAgendaList($children, $consultation, $isResolutionList, $admin, false);
         $shownMotions->addIMotionList($agendaListShownMotions);
 
         echo '</li>';
@@ -385,7 +389,7 @@ class LayoutHelper
         return $shownMotions;
     }
 
-    public static function showDateAgendaItem(ConsultationAgendaItem $agendaItem, Consultation $consultation, bool $admin): IMotionList
+    public static function showDateAgendaItem(ConsultationAgendaItem $agendaItem, Consultation $consultation, bool $isResolutionList, bool $admin): IMotionList
     {
         $fullTitle = '';
         if ($agendaItem->time && $agendaItem->time !== '0000-00-00') {
@@ -430,7 +434,7 @@ class LayoutHelper
         echo '</div>';
 
         $children               = ConsultationAgendaItem::getItemsByParent($consultation, $agendaItem->id);
-        $agendaListShownMotions = static::showAgendaList($children, $consultation, $admin, false);
+        $agendaListShownMotions = static::showAgendaList($children, $consultation, $isResolutionList, $admin, false);
 
         echo '</li>';
 
@@ -440,7 +444,7 @@ class LayoutHelper
     /**
      * @param ConsultationAgendaItem[] $items
      */
-    public static function showAgendaList(array $items, Consultation $consultation, bool $admin, bool $isRoot = false): IMotionList
+    public static function showAgendaList(array $items, Consultation $consultation, bool $isResolutionList, bool $admin, bool $isRoot = false): IMotionList
     {
         $timesClass = 'noShowTimes ';
         foreach ($consultation->agendaItems as $agendaItem) {
@@ -454,9 +458,9 @@ class LayoutHelper
         $shownIMotions = new IMotionList();
         foreach ($items as $item) {
             if ($item->isDateSeparator()) {
-                $newShown = static::showDateAgendaItem($item, $consultation, $admin);
+                $newShown = static::showDateAgendaItem($item, $consultation, $isResolutionList, $admin);
             } else {
-                $newShown = static::showAgendaItem($item, $consultation, $admin);
+                $newShown = static::showAgendaItem($item, $consultation, $isResolutionList, $admin);
             }
             $shownIMotions->addIMotionList($newShown);
         }
@@ -466,8 +470,8 @@ class LayoutHelper
     }
 
     /**
-     * @param MotionComment[] $motionComments
-     * @param AmendmentComment[] $amendmentComments
+     * @param MotionComment[][] $motionComments
+     * @param AmendmentComment[][] $amendmentComments
      */
     public static function getPrivateCommentIndicator(IMotion $imotion, array $motionComments, array $amendmentComments): string
     {

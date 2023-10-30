@@ -2,6 +2,7 @@
 
 namespace app\models\settings;
 
+use app\components\RequestContext;
 use app\components\yii\MessageSource;
 use app\controllers\Base;
 use app\models\db\Consultation;
@@ -14,6 +15,10 @@ use yii\web\{AssetBundle, Controller, View};
 
 class Layout
 {
+    public const SIDEBAR_TYPE_CONSULTATION = 0;
+    public const SIDEBAR_TYPE_MOTION = 1;
+    public const SIDEBAR_TYPE_AMENDMENT = 2;
+
     public array $menu = [];
     public array $breadcrumbs = [];
     public array $multimenu = [];
@@ -21,6 +26,7 @@ class Layout
     public string $postSidebarHtml = '';
     public array $menusHtml = [];
     public array $menusHtmlSmall = [];
+    public ?int $menuSidebarType = null;
     public string $menusSmallAttachment = '';
     public bool $robotsNoindex = false;
     public ?string $ogImage = null;
@@ -34,9 +40,13 @@ class Layout
     public bool $fullScreen = false;
     public ?string $mainCssFile = null;
     public array $mainAMDModules = [];
+    public bool $provideJwt = false;
     public ?string $canonicalUrl = null;
     public array $alternateLanuages = [];
     public array $feeds = [];
+
+    /** @var array<array{role: string, channel: string}> */
+    public array $connectLiveEvents = [];
 
     protected ?Consultation $consultation = null;
 
@@ -196,6 +206,11 @@ class Layout
         return $this;
     }
 
+    public function addLiveEventSubscription(string $role, string $channel): void
+    {
+        $this->connectLiveEvents[] = ['role' => $role, 'channel' => $channel];
+    }
+
     public function getHTMLLanguageCode(): string
     {
         if (!$this->consultation) {
@@ -303,7 +318,7 @@ class Layout
 
     public function loadSelectize(): void
     {
-        $this->addJs('js/selectize.min.js');
+        $this->addJs('npm/selectize.min.js');
         $this->addCSS('css/selectize.bootstrap3.css');
     }
 
@@ -408,7 +423,7 @@ class Layout
     public function getLogoStr(): string
     {
         /** @var Base $controller */
-        $controller   = \Yii::$app->controller;
+        $controller   = RequestContext::getWebApplication()->controller;
 
         if ($controller->consultation && $controller->consultation->getSettings()->logoUrl) {
             $path     = parse_url($controller->consultation->getSettings()->logoUrl);

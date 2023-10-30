@@ -1,9 +1,11 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\models\layoutHooks;
 
 use app\models\settings\{PrivilegeQueryContext, Privileges, AntragsgruenApp};
-use app\components\{Tools, UrlHelper};
+use app\components\{RequestContext, Tools, UrlHelper};
 use app\controllers\{admin\IndexController, admin\MotionListController, UserController};
 use app\models\AdminTodoItem;
 use app\models\db\{Amendment, Consultation, ConsultationMotionType, ConsultationText, ISupporter, Motion, User};
@@ -32,7 +34,7 @@ class StdHooks extends Hooks
 
     public function logoRow(string $before): string
     {
-        $out = '<div class="row logo">';
+        $out = '<div class="logoRow">';
         $out .= '<a href="' . Html::encode(UrlHelper::homeUrl()) . '" class="homeLinkLogo">';
         $out .= '<span class="sr-only">' . \Yii::t('base', 'home_back') . '</span>';
         $out .= $this->layout->getLogoStr();
@@ -171,7 +173,7 @@ class StdHooks extends Hooks
                 if ($amend->globalAlternative) {
                     $before .= '<strong>' . \Yii::t('amend', 'global_alternative') . ':</strong> ';
                 }
-                $aename = $amend->titlePrefix;
+                $aename = $amend->getFormattedTitlePrefix(Layout::CONTEXT_MOTION_LIST);
                 if ($aename === '') {
                     $aename = $amend->id;
                 }
@@ -310,10 +312,10 @@ class StdHooks extends Hooks
             }
 
             if (User::havePrivilege($consultation, Privileges::PRIVILEGE_ANY, PrivilegeQueryContext::anyRestriction())) {
-                $todo = AdminTodoItem::getConsultationTodos($consultation);
-                if (count($todo) > 0) {
+                $todo = AdminTodoItem::getConsultationTodoCount($consultation);
+                if ($todo > 0) {
                     $adminUrl   = UrlHelper::createUrl('/consultation/todo');
-                    $adminTitle = \Yii::t('base', 'menu_todo') . ' (' . count($todo) . ')';
+                    $adminTitle = \Yii::t('base', 'menu_todo') . ' (' . $todo . ')';
                     $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'adminTodo', 'aria-label' => $adminTitle]) . '</li>';
                 }
             }
@@ -342,10 +344,10 @@ class StdHooks extends Hooks
                 $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'adminLink', 'aria-label' => $adminTitle]) . '</li>';
             }
 
-            if (get_class(\Yii::$app->controller) === UserController::class) {
+            if (get_class(RequestContext::getController()) === UserController::class) {
                 $backUrl = UrlHelper::createUrl('/consultation/index');
             } else {
-                $backUrl = \Yii::$app->request->url;
+                $backUrl = RequestContext::getWebRequest()->url;
             }
             if (User::getCurrentUser()) {
                 $link = Html::a(

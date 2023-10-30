@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace app\models\forms;
 
-use app\models\settings\AntragsgruenApp;
+use app\models\AdminTodoItem;
+use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
 use app\components\{Tools, UrlHelper};
-use app\models\db\{Amendment, AmendmentSupporter, Consultation, ConsultationSettingsTag, IMotion, ISupporter, Motion, MotionSupporter};
+use app\models\db\{Amendment, AmendmentSupporter, Consultation, ConsultationSettingsTag, IMotion, ISupporter, Motion, MotionSupporter, User};
 use yii\helpers\Html;
 
 class AdminMotionFilterForm
@@ -33,18 +34,15 @@ class AdminMotionFilterForm
     public ?string $title = null;
     public ?string $prefix = null;
 
-    /** @var Motion [] */
-    public array $allMotions;
-
     /** @var Amendment[] */
     public array $allAmendments;
-    public Consultation $consultation;
 
     public int $sort = self::SORT_TITLE_PREFIX;
-    protected bool $showScreening;
 
     public bool $showReplaced = false;
-    public int $numReplaced;
+    public bool $onlyTodo = false;
+    public int $numReplacedAndDrafts;
+    public int $numTodo;
 
     /** @var string[] */
     protected array $route;
@@ -52,10 +50,11 @@ class AdminMotionFilterForm
     /**
      * @param Motion[] $allMotions
      */
-    public function __construct(Consultation $consultation, array $allMotions, bool $showScreening)
-    {
-        $this->showScreening = $showScreening;
-        $this->consultation  = $consultation;
+    public function __construct(
+        public Consultation $consultation,
+        public array $allMotions,
+        protected bool $showScreening
+    ) {
         $this->allMotions    = [];
         $this->allAmendments = [];
         foreach ($allMotions as $motion) {
@@ -84,9 +83,6 @@ class AdminMotionFilterForm
         $this->title = $values['title'] ?? null;
         $this->initiator = $values['initiator'] ?? null;
         $this->prefix = $values['prefix'] ?? null;
-        if (isset($values['sort'])) {
-            $this->sort = intval($values['sort']);
-        }
         if (isset($values['status'])) {
             $this->status = ($values['status'] === '' ? null : intval($values['status']));
         }
@@ -110,6 +106,64 @@ class AdminMotionFilterForm
         }
 
         $this->showReplaced = isset($values['showReplaced']) && $values['showReplaced'] === '1';
+        $this->onlyTodo = isset($values['onlyTodo']) && $values['onlyTodo'] === '1';
+
+        if (isset($values['sort'])) {
+            $this->sort = intval($values['sort']);
+        }
+    }
+
+    public function getAttributes(): array
+    {
+        return [
+            'title' => $this->title,
+            'initiator' => $this->initiator,
+            'prefix' => $this->prefix,
+            'status' => $this->status,
+            'version' => $this->version,
+            'tag' => $this->tag,
+            'responsibility' => $this->responsibility,
+            'agendaItem' => $this->agendaItem,
+            'proposalStatus' => $this->proposalStatus,
+            'showReplaced' => ($this->showReplaced ? '1' : null),
+            'onlyTodo' => ($this->onlyTodo ? '1' : null),
+            'sort' => $this->sort,
+        ];
+    }
+
+    public function isFilterSet(): bool
+    {
+        return $this->title !== null ||
+               $this->initiator !== null ||
+               $this->prefix !== null ||
+               $this->status !== null ||
+               $this->version !== null ||
+               $this->tag !== null ||
+               $this->responsibility !== null ||
+               $this->agendaItem !== null ||
+               $this->proposalStatus !== null ||
+               $this->onlyTodo === true;
+    }
+
+    public function isDefaultSettings(): bool
+    {
+        return !$this->isFilterSet() &&
+               $this->showReplaced === false &&
+               $this->sort === self::SORT_TITLE_PREFIX;
+    }
+
+    public function setCurrentRoute(array $route): void
+    {
+        $this->route = $route;
+    }
+
+    public function getCurrentUrl(array $add = []): string
+    {
+        $attributes = [];
+        foreach ($this->getAttributes() as $key => $val) {
+            $attributes['Search[' . $key . ']'] = $val;
+        }
+        return UrlHelper::createUrl(array_merge($this->route, $attributes, $add));
     }
 
     private ?array $versionNames = null;
@@ -210,19 +264,19 @@ class AdminMotionFilterForm
     {
         if (is_a($motion1, Motion::class)) {
             /** @var Motion $motion1 */
-            $rev1 = $motion1->titlePrefix;
+            $rev1 = $motion1->getFormattedTitlePrefix();
         } else {
             /** @var Amendment $motion1 */
-            $rev1 = $motion1->titlePrefix . ' ' . \Yii::t('amend', 'amend_for_motion') .
-                    ' ' . $motion1->getMyMotion()->titlePrefix;
+            $rev1 = $motion1->getFormattedTitlePrefix() . ' ' . \Yii::t('amend', 'amend_for_motion') .
+                    ' ' . $motion1->getMyMotion()->getFormattedTitlePrefix();
         }
         if (is_a($motion2, Motion::class)) {
             /** @var Motion $motion2 */
-            $rev2 = $motion2->titlePrefix;
+            $rev2 = $motion2->getFormattedTitlePrefix();
         } else {
             /** @var Amendment $motion2 */
-            $rev2 = $motion2->titlePrefix . ' ' . \Yii::t('amend', 'amend_for_motion') .
-                    ' ' . $motion2->getMyMotion()->titlePrefix;
+            $rev2 = $motion2->getFormattedTitlePrefix() . ' ' . \Yii::t('amend', 'amend_for_motion') .
+                    ' ' . $motion2->getMyMotion()->getFormattedTitlePrefix();
         }
 
         return strnatcasecmp($rev1, $rev2);
@@ -335,7 +389,9 @@ class AdminMotionFilterForm
      */
     public function getSorted(): array
     {
-        $merge = array_merge($this->getFilteredMotions(), $this->getFilteredAmendments());
+        $filteredMotions = $this->getFilteredMotions();
+        $merge = array_merge($filteredMotions, $this->getFilteredAmendments($filteredMotions));
+
         switch ($this->sort) {
             case static::SORT_TITLE:
                 usort($merge, [$this, 'sortTitle']);
@@ -442,19 +498,22 @@ class AdminMotionFilterForm
      */
     private function calcAndFilterReplacedMotions(array $motions): array
     {
-        $this->numReplaced = 0;
-        $replacedMotionIds = [];
+        $this->numReplacedAndDrafts = 0;
+        $replacedAndDraftMotionIds = [];
         foreach ($motions as $motion) {
-            if ($motion->parentMotionId) {
-                $replacedMotionIds[] = $motion->parentMotionId;
+            if ($motion->status === Motion::STATUS_DRAFT) {
+                // Motions in draft state should be hidden by default. Their parentMotionId status should also not hide the parent motion.
+                $replacedAndDraftMotionIds[] = $motion->id;
+            } elseif ($motion->parentMotionId) {
+                $replacedAndDraftMotionIds[] = $motion->parentMotionId;
             }
         }
 
         /** @var Motion[] $out */
         $out = [];
         foreach ($motions as $motion) {
-            if (in_array($motion->id, $replacedMotionIds)) {
-                $this->numReplaced++;
+            if (in_array($motion->id, $replacedAndDraftMotionIds)) {
+                $this->numReplacedAndDrafts++;
                 if ($this->showReplaced) {
                     $out[] = $motion;
                 }
@@ -464,6 +523,40 @@ class AdminMotionFilterForm
         }
 
         return $out;
+    }
+
+    /**
+     * @param IMotion[] $imotions
+     * @return IMotion[]
+     */
+    private function calcAndFilterTodoItems(array $imotions): array
+    {
+        $todoMotionIds = [];
+        $todoAmendmentIds = [];
+        foreach (AdminTodoItem::getConsultationTodos($this->consultation) as $item) {
+            if ($item->targetType === AdminTodoItem::TARGET_MOTION) {
+                $todoMotionIds[] = $item->targetId;
+            }
+            if ($item->targetType === AdminTodoItem::TARGET_AMENDMENT) {
+                $todoAmendmentIds[] = $item->targetId;
+            }
+        }
+
+        $this->numTodo = count($todoMotionIds) + count($todoAmendmentIds);
+
+        if ($this->onlyTodo) {
+            return array_values(array_filter($imotions, function (IMotion $imotion) use ($todoMotionIds, $todoAmendmentIds): bool {
+                if (is_a($imotion, Motion::class)) {
+                    return in_array($imotion->id, $todoMotionIds);
+                }
+                if (is_a($imotion, Amendment::class)) {
+                    return in_array($imotion->id, $todoAmendmentIds);
+                }
+                return false;
+            }));
+        } else {
+            return $imotions;
+        }
     }
 
     /**
@@ -509,7 +602,7 @@ class AdminMotionFilterForm
             }
 
             $prefix = $this->prefix;
-            if ($prefix !== null && $prefix !== '' && mb_stripos($motion->titlePrefix, $prefix) === false) {
+            if ($prefix !== null && $prefix !== '' && mb_stripos($motion->getFormattedTitlePrefix(), $prefix) === false) {
                 $matches = false;
             }
 
@@ -518,7 +611,11 @@ class AdminMotionFilterForm
             }
         }
 
-        return $this->calcAndFilterReplacedMotions($out);
+        $out = $this->calcAndFilterReplacedMotions($out);
+        /** @var Motion[] $out */
+        $out = $this->calcAndFilterTodoItems($out);
+
+        return $out;
     }
 
 
@@ -588,13 +685,24 @@ class AdminMotionFilterForm
     }
 
     /**
+     * @param Motion[] $filteredMotions
      * @return Amendment[]
      */
-    public function getFilteredAmendments(): array
+    public function getFilteredAmendments(array $filteredMotions): array
     {
+        $motionIds = array_map(fn (Motion $motion) => $motion->id, $filteredMotions);
+
         $out = [];
         foreach ($this->allAmendments as $amend) {
             $matches = true;
+
+            if (!$this->isFilterSet() && !in_array($amend->motionId, $motionIds)) {
+                // For the unfiltered list, amendments are considered dependent on their motions. If the motion is not visible anymore,
+                // because it's replaced or set to draft status, the amendments are not to be shown.
+                // If it is specifically filtered for a specific attribute, then the visibility of an amendment should not depend on its parent
+                // motion anymore.
+                $matches = false;
+            }
 
             if ($this->status !== null && $this->status !== "" && $amend->status !== $this->status) {
                 $matches = false;
@@ -644,7 +752,7 @@ class AdminMotionFilterForm
             }
 
             $prefix = $this->prefix;
-            if ($prefix !== null && $prefix !== '' && mb_stripos($amend->titlePrefix ?? '', $prefix) === false) {
+            if ($prefix !== null && $prefix !== '' && mb_stripos($amend->getFormattedTitlePrefix() ?? '', $prefix) === false) {
                 $matches = false;
             }
 
@@ -652,6 +760,9 @@ class AdminMotionFilterForm
                 $out[] = $amend;
             }
         }
+
+        /** @var Amendment[] $out */
+        $out = $this->calcAndFilterTodoItems($out);
 
         return $out;
     }
@@ -799,13 +910,28 @@ class AdminMotionFilterForm
         $str .= '<div><br><button type="submit" class="btn btn-success" name="search">' .
             \Yii::t('admin', 'list_search_do') . '</button></div>';
 
+        if (!$this->isDefaultSettings()) {
+            $str .= '<div><br><button type="submit" class="btn btn-default" name="reset">' .
+                    \Yii::t('admin', 'list_search_reset') . '</button></div>';
+        }
+
         $str .= '</div>';
 
-        if ($this->numReplaced > 0) {
-            $str .= '<div class="filtersBottom"><label>';
-            $str .= Html::checkbox('Search[showReplaced]', $this->showReplaced, ['value' => '1', 'id' => 'filterShowReplaced']);
-            $str .= ' ' . str_replace('%NUM%', (string)$this->numReplaced, 'Ersetzte / alte Versionen anzeigen (%NUM%)');
-            $str .= '</label></div>';
+        if ($this->numReplacedAndDrafts > 0 || $this->numTodo > 0) {
+            $str .= '<div class="filtersBottom">';
+            if ($this->numReplacedAndDrafts > 0) {
+                $str .= '<label>';
+                $str .= Html::checkbox('Search[showReplaced]', $this->showReplaced, ['value' => '1', 'id' => 'filterShowReplaced']);
+                $str .= ' ' . str_replace('%NUM%', (string)$this->numReplacedAndDrafts, \Yii::t('admin', 'filter_show_replaced'));
+                $str .= '</label> &nbsp; ';
+            }
+            if ($this->numTodo > 0) {
+                $str .= '<label>';
+                $str .= Html::checkbox('Search[onlyTodo]', $this->onlyTodo, ['value' => '1', 'id' => 'filterOnlyTodo']);
+                $str .= ' ' . str_replace('%NUM%', (string)$this->numTodo, \Yii::t('admin', 'filter_only_todo'));
+                $str .= '</label>';
+            }
+            $str .= '</div>';
         }
 
         return $str;
@@ -1027,23 +1153,53 @@ class AdminMotionFilterForm
         return $out;
     }
 
-    public function setCurrentRoute(array $route): void
+    public function hasAdditionalActions(): bool
     {
-        $this->route = $route;
+        return false;
     }
 
-    public function getCurrentUrl(array $add = []): string
+    protected function showAdditionalActions(): string
     {
-        return UrlHelper::createUrl(array_merge($this->route, [
-            'Search[status]'         => $this->status,
-            'Search[tag]'            => $this->tag,
-            'Search[version]'        => $this->version,
-            'Search[initiator]'      => $this->initiator,
-            'Search[title]'          => $this->title,
-            'Search[sort]'           => $this->sort,
-            'Search[agendaItem]'     => $this->agendaItem,
-            'Search[responsibility]' => $this->responsibility,
-            'Search[prefix]'         => $this->prefix,
-        ], $add));
+        return '';
+    }
+
+    public static function performAdditionalListActions(Consultation $consultation): void
+    {
+    }
+
+    public function showListActions(): string
+    {
+        $privilegeScreening = User::havePrivilege($this->consultation, Privileges::PRIVILEGE_SCREENING, PrivilegeQueryContext::anyRestriction());
+        $privilegeProposals = User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CHANGE_PROPOSALS, PrivilegeQueryContext::anyRestriction());
+        $privilegeDelete = User::havePrivilege($this->consultation, Privileges::PRIVILEGE_MOTION_DELETE, PrivilegeQueryContext::anyRestriction());
+
+        if (!$privilegeProposals && !$privilegeScreening && !$privilegeDelete && !$this->hasAdditionalActions()) {
+            return '';
+        }
+
+        $str = '<section class="adminMotionListActions">
+        <div class="selectAll">
+            <button type="button" class="btn btn-link markAll">' . \Yii::t('admin', 'list_all') . '</button> &nbsp;
+            <button type="button" class="btn btn-link markNone">' . \Yii::t('admin', 'list_none') . '</button> &nbsp;
+        </div>
+
+        <div class="actionButtons">' . \Yii::t('admin', 'list_marked') . ': &nbsp;';
+            if ($privilegeDelete) {
+                $str .= '<button type="submit" class="btn btn-danger deleteMarkedBtn" name="delete">' . \Yii::t('admin', 'list_delete') . '</button> &nbsp;';
+            }
+            if ($privilegeScreening) {
+                $str .= '<button type="submit" class="btn btn-info unscreenMarkedBtn" name="unscreen">' . \Yii::t('admin', 'list_unscreen') . '</button> &nbsp;';
+                $str .= '<button type="submit" class="btn btn-success screenMarkedBtn" name="screen">' . \Yii::t('admin', 'list_screen') . '</button> &nbsp;';
+            }
+            if ($privilegeProposals) {
+                $str .= '<button type="submit" class="btn btn-success" name="proposalVisible">' . \Yii::t('admin', 'list_proposal_visible') . '</button>';
+            }
+            if ($this->hasAdditionalActions()) {
+                $str .= $this->showAdditionalActions();
+            }
+            $str .= '</div>
+        </section>';
+
+        return $str;
     }
 }

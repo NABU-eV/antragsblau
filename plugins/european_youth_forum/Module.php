@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace app\plugins\european_youth_forum;
 
 use app\models\quorumType\NoQuorum;
-use app\models\db\{Consultation, Site, User, Vote, VotingBlock};
+use app\models\db\{Consultation, ConsultationUserGroup, User, Vote, VotingBlock};
 use app\models\settings\Layout;
 use app\plugins\ModuleBase;
 
@@ -30,6 +30,7 @@ class Module extends ModuleBase
 
     /**
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @return class-string<VotingData>
      */
     public static function getVotingDataClass(Consultation $consultation): string
     {
@@ -140,5 +141,68 @@ class Module extends ModuleBase
         $results['total']['total_multiplied'] = $results['nyc']['total_multiplied'] + $results['ingyo']['total_multiplied'];
 
         return $results;
+    }
+
+    public static function createDefaultUserGroups(Consultation $consultation): void
+    {
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'INGYO Full member (OD) WITH Voting rights');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'NYC Full member (OD) WITH Voting rights');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'INGYO Full member (OD) NO Voting rights');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'NYC Full member (OD) NO Voting rights');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'INGYO Full member NOT participating');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'NYC Full member NOT participating');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'INGYO Substitute Delegate');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'NYC Substitute Delegate');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'INGYO Observer (OD)');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'NYC Observer (OD)');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'INGYO Candidate (OD)');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'NYC Candidate (OD)');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'Associates');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'YFJ Board');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'YFJ Staff');
+        ConsultationUserGroup::getOrCreateUserGroup($consultation, 'Remote user');
+    }
+
+    public static function getSelectableGroupsForUser(Consultation $consultation, User $user): ?array
+    {
+        $organisations = $consultation->getSettings()->organisations;
+        if ($organisations === null || $user->organization === null) {
+            return null;
+        }
+
+        // Determining if the auto-assigned group(s) of that organization is INGYO/NYC
+        $isIngyo = false;
+        $isNyc = false;
+        foreach ($organisations as $organisation) {
+            if (
+                !str_contains(mb_strtolower($user->organization), mb_strtolower($organisation->name)) ||
+                str_contains($user->organization, 'YFJ') // Prevent a collision YFJ/FJ
+            ) {
+                continue;
+            }
+            foreach ($organisation->autoUserGroups as $autoGroupId) {
+                if (str_contains($consultation->getUserGroupById($autoGroupId)->getNormalizedTitle(), 'INGYO')) {
+                    $isIngyo = true;
+                }
+                if (str_contains($consultation->getUserGroupById($autoGroupId)->getNormalizedTitle(), 'NYC')) {
+                    $isNyc = true;
+                }
+            }
+        }
+        if ((!$isNyc && !$isIngyo) || ($isNyc && $isIngyo)) {
+            return null;
+        }
+
+        $validGroups = [];
+        foreach ($consultation->getAllAvailableUserGroups([], true) as $group) {
+            if ($isIngyo && str_contains($group->getNormalizedTitle(), 'INGYO')) {
+                $validGroups[] = $group->id;
+            }
+            if ($isNyc && str_contains($group->getNormalizedTitle(), 'NYC')) {
+                $validGroups[] = $group->id;
+            }
+        }
+
+        return $validGroups;
     }
 }

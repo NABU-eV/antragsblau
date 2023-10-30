@@ -64,7 +64,7 @@ Bitte beachte, dass sich die Unterstützer*innen deines Änderungsantrags mit ih
     'create_select_statutes'            => 'Es gibt mehrere Abschnitte, zu denen ein Änderungsantrag gestellt werden kann. Wähle hier den aus, den du ändern möchtest.',
     'create_explanation'                => 'Bitte ändere unten den ursprünglichen Antragstext so ab, wie du ihn gerne beschlossen haben möchtest.<br>' . "\n" .
                                            'Unter &quot;<strong>Begründung</strong>&quot; kannst du die Änderung begründen.<br>' . "\n" .
-                                           'Falls Du der Antragskommission über einen inhaltlichen  Änderungsantrag hinaus oder ausschließlich redaktionelle Hinweise zum Antrag geben möchtest, kannst du diese als „<strong>Redaktionelle Änderung</strong>” beifügen und entsprechend kennzeichnen.',
+                                           'Falls Du der Antragskommission über einen inhaltlichen Änderungsantrag hinaus oder ausschließlich redaktionelle Hinweise zum Antrag geben möchtest, kannst du diese als „<strong>Redaktionelle Änderung</strong>” beifügen und entsprechend kennzeichnen.',
     'create_explanation_statutes'       => 'Bitte ändere unten die Satzung so ab, wie sie deinem Änderungsantrag nach lauten sollte.<br>Unter &quot;<strong>Begründung</strong>&quot; kannst du die Änderung begründen.',
     'create_explanation_amendtoamend'   => 'Bitte ändere unten den Änderungsantrag so ab, wie er lauten sollte.<br>Unter &quot;<strong>Begründung</strong>&quot; kannst du die Änderung begründen. Die Änderungen werden als neuer Änderungsantrag veröffentlicht.',
     'support_collect_explanation_title' => 'Einen Änderungsantrag gemeinschaftlich stellen',
@@ -122,6 +122,7 @@ Bitte beachte, dass sich die Unterstützer*innen deines Änderungsantrags mit ih
     'merge_new_status_screened'         => 'Eine neue Version dieses Antrags',
     'merge_new_status_res_f'            => 'Ein Beschluss',
     'merge_new_status_res_p'            => 'Ein vorläufiger Beschluss',
+    'merge_new_substatus'               => 'Neuer Antragsstatus',
     'merge_new_orga'                    => 'Beschlussfassendes Gremium',
     'merge_new_resolution_date'         => 'Beschlussdatum',
     'merge_new_votes_enter'             => 'Abstimmung',
@@ -211,7 +212,7 @@ Bitte beachte, dass sich die Unterstützer*innen deines Änderungsantrags mit ih
     'err_withdraw_forbidden'          => 'Not allowed to withdraw this motion.',
     'err_edit_forbidden'              => 'Not allowed to edit this motion.',
     'err_not_visible_title'           => 'Nicht sichtbar',
-    'err_not_visible'                 => 'Dies ist kein regulär anzeigbarer Änderungsantrag.',
+    'err_not_visible'                 => 'Dieser Änderungsantrag kann nicht angezeigt werden.',
     'withdraw_done'                   => 'Der Änderungsantrag wurde zurückgezogen.',
     'withdraw_bread'                  => 'Zurückziehen',
     'withdraw'                        => 'Zurückziehen',

@@ -1,5 +1,6 @@
 <?php
 
+use app\models\AdminTodoItem;
 use app\models\settings\{PrivilegeQueryContext, Privileges};
 use app\components\{HTMLTools, UrlHelper};
 use app\models\db\{Amendment, Motion, User};
@@ -41,7 +42,7 @@ echo '<a href="' . Html::encode($viewUrl) . '"><span class="glyphicon glyphicon-
 if ($lastMotion && $entry->motionId === $lastMotion->id) {
     echo "&#8627;";
 }
-echo Html::encode($entry->titlePrefix ?: '-') . '</a></td>';
+echo Html::encode($entry->getFormattedTitlePrefix() ?: '-') . '</a></td>';
 echo '<td class="titleCol"><span>';
 if ($lastMotion && $entry->motionId === $lastMotion->id) {
     echo "&#8627;";
@@ -59,6 +60,12 @@ if ($entry->status === Amendment::STATUS_COLLECTING_SUPPORTERS) {
 }
 if ($entry->statusString !== null && $entry->statusString !== '') {
     echo ' <small>(' . Html::encode($entry->statusString) . ')</small>';
+}
+$todos = array_map(fn(AdminTodoItem $item): string => $item->action, AdminTodoItem::getTodosForIMotion($entry));
+if (count($todos) > 0) {
+    echo '<div class="todo">' . Yii::t('admin', 'list_todo') . ': ';
+    echo Html::encode(implode(', ', $todos));
+    echo '</div>';
 }
 echo '</td>';
 if ($colDate) {
@@ -117,7 +124,7 @@ if ($colAction) {
     if ($canDelete || $canScreen) {
         echo '<div class="btn-group">
   <button class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-expanded="false">
-    Aktion
+    ' . Yii::t('admin', 'list_action') . '
     <span class="caret"></span>
   </button>
   <ul class="dropdown-menu">';

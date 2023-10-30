@@ -3,10 +3,10 @@
 namespace app\controllers\admin;
 
 use app\models\exceptions\{Access, NotFound, ExceptionBase, ResponseException};
-use app\components\{Tools, ZipWriter};
+use app\components\{RequestContext, Tools, UrlHelper, ZipWriter};
 use app\models\db\{Amendment, Consultation, IMotion, Motion, User};
 use app\models\forms\AdminMotionFilterForm;
-use app\models\http\{BinaryFileResponse, HtmlErrorResponse, HtmlResponse, ResponseInterface};
+use app\models\http\{BinaryFileResponse, HtmlErrorResponse, HtmlResponse, RedirectResponse, ResponseInterface};
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
 use app\views\amendment\LayoutHelper as AmendmentLayoutHelper;
 use app\views\motion\LayoutHelper as MotionLayoutHelper;
@@ -195,32 +195,19 @@ class MotionListController extends AdminBase
 
     public function actionIndex(?string $motionId = null): ResponseInterface
     {
-        $consultation       = $this->consultation;
+        $consultation = $this->consultation;
         if (!self::haveAccessToList($consultation)) {
             return new HtmlErrorResponse(403, \Yii::t('admin', 'no_access'));
         }
 
         $privilegeScreening = User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, PrivilegeQueryContext::anyRestriction());
         $privilegeProposals = User::havePrivilege($consultation, Privileges::PRIVILEGE_CHANGE_PROPOSALS, PrivilegeQueryContext::anyRestriction());
+        $privilegeDelete = User::havePrivilege($consultation, Privileges::PRIVILEGE_MOTION_DELETE, PrivilegeQueryContext::anyRestriction());
 
         $this->activateFunctions();
 
         if ($motionId === null || $motionId === 'all') {
             $consultation->preloadAllMotionData(Consultation::PRELOAD_ONLY_AMENDMENTS);
-        }
-
-        try {
-            if ($privilegeScreening) {
-                $this->actionListallScreeningMotions();
-                $this->actionListallScreeningAmendments();
-            }
-            if ($privilegeProposals) {
-                $this->actionListallProposalAmendments();
-            }
-        } catch (Access $e) {
-            throw new ResponseException(new HtmlErrorResponse(403, $e->getMessage()));
-        } catch (NotFound $e) {
-            throw new ResponseException(new HtmlErrorResponse(404, $e->getMessage()));
         }
 
         $motionListClass = AdminMotionFilterForm::class;
@@ -230,11 +217,27 @@ class MotionListController extends AdminBase
             }
         }
 
+        try {
+            if ($privilegeScreening || $privilegeDelete) {
+                $this->actionListallScreeningMotions();
+                $this->actionListallScreeningAmendments();
+            }
+            if ($privilegeProposals) {
+                $this->actionListallProposalAmendments();
+            }
+            $motionListClass::performAdditionalListActions($this->consultation);
+        } catch (Access $e) {
+            throw new ResponseException(new HtmlErrorResponse(403, $e->getMessage()));
+        } catch (NotFound $e) {
+            throw new ResponseException(new HtmlErrorResponse(404, $e->getMessage()));
+        }
+
         if ($motionId !== null && $motionId !== 'all' && $consultation->getMotion($motionId) === null) {
             $motionId = null;
         }
         if ($motionId === null && $consultation->getSettings()->adminListFilerByMotion) {
             $search = new $motionListClass($consultation, $consultation->motions, $privilegeScreening);
+            $search->getSorted(); // Initialize internal fields
             return new HtmlResponse($this->render('motion_list', ['motions' => $consultation->motions, 'search' => $search]));
         }
 
@@ -246,16 +249,26 @@ class MotionListController extends AdminBase
 
         /** @var AdminMotionFilterForm $search */
         $search = new $motionListClass($consultation, $motions, $privilegeScreening);
-        if ($this->isRequestSet('Search')) {
-            $search->setAttributes($this->getRequestValue('Search'));
+        if ($this->isRequestSet('reset')) {
+            RequestContext::getSession()->set('motionListSearch', null);
+            return new RedirectResponse(UrlHelper::createUrl('/admin/motion-list/index'));
+        }
+        if ($this->getRequestValue('Search')) {
+            $attributes = $this->getRequestValue('Search');
+            RequestContext::getSession()->set('motionListSearch', $attributes);
+            $search->setAttributes($attributes);
+        } elseif (RequestContext::getSession()->get('motionListSearch')) {
+            $search->setAttributes(RequestContext::getSession()->get('motionListSearch'));
         }
 
+        /** @var AdminMotionFilterForm $search */
         return new HtmlResponse($this->render('list_all', [
             'motionId'           => $motionId,
             'entries'            => $search->getSorted(),
             'search'             => $search,
             'privilegeScreening' => $privilegeScreening,
             'privilegeProposals' => $privilegeProposals,
+            'privilegeDelete'    => $privilegeDelete,
         ]));
     }
 
@@ -325,7 +338,10 @@ class MotionListController extends AdminBase
         return new BinaryFileResponse(BinaryFileResponse::TYPE_CSV, $csv, true, $filename);
     }
 
-    public function actionMotionPdfziplist(int $motionTypeId = 0, int $withdrawn = 0): ResponseInterface
+    /**
+     * @return IMotion[]
+     */
+    private function getVisibleAmendmentsForExport(int $motionTypeId = 0, int $withdrawn = 0): array
     {
         $withdrawn = ($withdrawn === 1);
 
@@ -336,7 +352,7 @@ class MotionListController extends AdminBase
                 $motions = $this->consultation->getVisibleMotions($withdrawn);
             }
             if (count($motions) === 0) {
-                return new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet'));
+                throw new ResponseException(new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet')));
             }
             /** @var IMotion[] $imotions */
             $imotions = [];
@@ -348,8 +364,15 @@ class MotionListController extends AdminBase
                 }
             }
         } catch (ExceptionBase $e) {
-            return new HtmlErrorResponse(404, $e->getMessage());
+            throw new ResponseException(new HtmlErrorResponse(404, $e->getMessage()));
         }
+
+        return $imotions;
+    }
+
+    public function actionMotionPdfziplist(int $motionTypeId = 0, int $withdrawn = 0): ResponseInterface
+    {
+        $imotions = $this->getVisibleAmendmentsForExport($motionTypeId, $withdrawn);
 
         $zip      = new ZipWriter();
         $hasLaTeX = ($this->getParams()->xelatexPath || $this->getParams()->lualatexPath);
@@ -378,42 +401,43 @@ class MotionListController extends AdminBase
 
     public function actionMotionOdtziplist(int $motionTypeId = 0, int $withdrawn = 0): ResponseInterface
     {
-        $withdrawn = ($withdrawn === 1);
-
-        try {
-            if ($motionTypeId > 0) {
-                $motions = $this->consultation->getMotionType($motionTypeId)->getVisibleMotions($withdrawn);
-            } else {
-                $motions = $this->consultation->getVisibleMotions($withdrawn);
-            }
-            if (count($motions) === 0) {
-                return new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet'));
-            }
-            /** @var IMotion[] $imotions */
-            $imotions = [];
-            foreach ($motions as $motion) {
-                if ($motion->getMyMotionType()->amendmentsOnly) {
-                    $imotions = array_merge($imotions, $motion->getVisibleAmendments($withdrawn));
-                } else {
-                    $imotions[] = $motion;
-                }
-            }
-        } catch (ExceptionBase $e) {
-            return new HtmlErrorResponse(404, $e->getMessage());
-        }
+        $imotions = $this->getVisibleAmendmentsForExport($motionTypeId, $withdrawn);
 
         $zip = new ZipWriter();
         foreach ($imotions as $imotion) {
             if (is_a($imotion, Motion::class)) {
-                $content = $this->renderPartial('@app/views/motion/view_odt', ['motion' => $imotion]);
-                $zip->addFile($imotion->getFilenameBase(false) . '.odt', $content);
+                $doc = $imotion->getMyMotionType()->createOdtTextHandler();
+                MotionLayoutHelper::printMotionToOdt($imotion, $doc);
+                $zip->addFile($imotion->getFilenameBase(false) . '.odt', $doc->finishAndGetDocument());
             }
             if (is_a($imotion, Amendment::class)) {
-                $content = $this->renderPartial('@app/views/amendment/view_odt', ['amendment' => $imotion]);
-                $zip->addFile($imotion->getFilenameBase(false) . '.odt', $content);
+                $doc = $imotion->getMyMotionType()->createOdtTextHandler();
+                AmendmentLayoutHelper::printAmendmentToOdt($imotion, $doc);
+                $zip->addFile($imotion->getFilenameBase(false) . '.odt', $doc->finishAndGetDocument());
             }
         }
 
         return new BinaryFileResponse(BinaryFileResponse::TYPE_ZIP, $zip->getContentAndFlush(), true, 'motions_odt');
+    }
+
+    public function actionMotionOdtall(int $motionTypeId = 0, int $withdrawn = 0): ResponseInterface
+    {
+        $imotions = $this->getVisibleAmendmentsForExport($motionTypeId, $withdrawn);
+
+        $doc = $imotions[0]->getMyMotionType()->createOdtTextHandler();
+
+        foreach ($imotions as $i => $imotion) {
+            if ($i > 0) {
+                $doc->nextPage();
+            }
+            if (is_a($imotion, Motion::class)) {
+                MotionLayoutHelper::printMotionToOdt($imotion, $doc);
+            }
+            if (is_a($imotion, Amendment::class)) {
+                AmendmentLayoutHelper::printAmendmentToOdt($imotion, $doc);
+            }
+        }
+
+        return new BinaryFileResponse(BinaryFileResponse::TYPE_ODT, $doc->finishAndGetDocument(), true, 'motions');
     }
 }

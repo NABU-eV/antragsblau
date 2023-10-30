@@ -2,25 +2,15 @@
 
 namespace app\controllers;
 
-use app\components\UrlHelper;
-use app\models\db\{Amendment,
-    AmendmentAdminComment,
-    AmendmentComment,
-    AmendmentSupporter,
-    ConsultationLog,
-    ConsultationSettingsTag,
-    IComment,
-    Consultation,
-    User};
+use app\components\{RequestContext, UrlHelper};
+use app\models\db\{Amendment, AmendmentAdminComment, AmendmentComment, AmendmentSupporter, ConsultationLog, ConsultationSettingsTag, IComment, Consultation, User};
 use app\models\events\AmendmentEvent;
-use app\models\http\RedirectResponse;
-use app\models\settings\PrivilegeQueryContext;
-use app\models\settings\Privileges;
+use app\models\http\{JsonResponse, RedirectResponse};
+use app\models\settings\{PrivilegeQueryContext, Privileges, InitiatorForm};
 use app\models\exceptions\{DB, FormError, Internal, ResponseException};
 use app\models\forms\CommentForm;
-use app\models\settings\InitiatorForm;
 use app\models\supportTypes\SupportBase;
-use yii\web\{Request, Response, Session};
+use yii\web\{Request, Session};
 
 /**
  * @property Consultation $consultation
@@ -209,7 +199,7 @@ trait AmendmentActionsTrait
         $role = AmendmentSupporter::ROLE_SUPPORTER;
         $user = User::getCurrentUser();
         $gender = $this->getHttpRequest()->post('motionSupportGender', '');
-        $nonPublic = ($supportClass->getSettingsObj()->offerNonPublicSupports && \Yii::$app->request->post('motionSupportPublic') === null);
+        $nonPublic = ($supportClass->getSettingsObj()->offerNonPublicSupports && RequestContext::getWebRequest()->post('motionSupportPublic') === null);
         if ($user && ($user->fixedData & User::FIXED_NAME)) {
             $name = $user->name;
         } else {
@@ -247,7 +237,7 @@ trait AmendmentActionsTrait
      * @throws FormError
      * @throws Internal
      */
-    private function amendmentLikeDislike(Amendment $amendment, string $role, string $string, string $name = '', string $orga = '', string $gender = '', bool $nonPublic = false): void
+    private function amendmentLikeDislike(Amendment $amendment, string $role, string $string, string $name, string $orga = '', string $gender = '', bool $nonPublic = false): void
     {
         $currentUser = User::getCurrentUser();
         if (!$amendment->getMyMotion()->motionType->getAmendmentSupportPolicy()->checkCurrUser()) {
@@ -268,7 +258,9 @@ trait AmendmentActionsTrait
             throw new FormError('Not supported');
         }
         $msg = \Yii::t('amend', 'like_done');
-        $this->amendmentLikeDislike($amendment, AmendmentSupporter::ROLE_LIKE, $msg);
+        $name = (User::getCurrentUser() ? '' : $this->getHttpRequest()->post('likeName', ''));
+
+        $this->amendmentLikeDislike($amendment, AmendmentSupporter::ROLE_LIKE, $msg, $name);
         ConsultationLog::logCurrUser($amendment->getMyConsultation(), ConsultationLog::AMENDMENT_LIKE, $amendment->id);
     }
 
@@ -282,7 +274,10 @@ trait AmendmentActionsTrait
         }
         $msg          = \Yii::t('amend', 'dislike_done');
         $consultation = $amendment->getMyConsultation();
-        $this->amendmentLikeDislike($amendment, AmendmentSupporter::ROLE_DISLIKE, $msg);
+
+        $name = (User::getCurrentUser() ? '' : $this->getHttpRequest()->post('likeName', ''));
+
+        $this->amendmentLikeDislike($amendment, AmendmentSupporter::ROLE_DISLIKE, $msg, $name);
         ConsultationLog::logCurrUser($consultation, ConsultationLog::AMENDMENT_DISLIKE, $amendment->id);
     }
 
@@ -332,7 +327,7 @@ trait AmendmentActionsTrait
 
     private function setProposalAgree(Amendment $amendment): void
     {
-        $procedureToken = \Yii::$app->request->get('procedureToken');
+        $procedureToken = RequestContext::getWebRequest()->get('procedureToken');
         if (!$amendment->canSeeProposedProcedure($procedureToken) || !$amendment->proposalFeedbackHasBeenRequested()) {
             $this->getHttpSession()->setFlash('error', 'Not allowed to perform this action');
             return;
@@ -349,7 +344,7 @@ trait AmendmentActionsTrait
     private function savePrivateNote(Amendment $amendment): void
     {
         $user     = User::getCurrentUser();
-        $noteText = trim(\Yii::$app->request->post('noteText', ''));
+        $noteText = trim(RequestContext::getWebRequest()->post('noteText', ''));
         if (!$user) {
             return;
         }
@@ -381,7 +376,7 @@ trait AmendmentActionsTrait
      */
     private function performShowActions(Amendment $amendment, int $commentId, array &$viewParameters): void
     {
-        $post = \Yii::$app->request->post();
+        $post = RequestContext::getWebRequest()->post();
         if ($commentId === 0 && isset($post['commentId'])) {
             $commentId = intval($post['commentId']);
         }
@@ -414,31 +409,20 @@ trait AmendmentActionsTrait
         }
     }
 
-    /**
-     * @param string $motionSlug
-     * @param int $amendmentId
-     * @return string
-     * @throws \Exception
-     * @throws \Yii\db\StaleObjectException
-     * @throws \Throwable
-     */
-    public function actionDelProposalComment($motionSlug, $amendmentId)
+    public function actionDelProposalComment(string $motionSlug, int $amendmentId): JsonResponse
     {
-        \Yii::$app->response->format = Response::FORMAT_RAW;
-        \Yii::$app->response->headers->add('Content-Type', 'application/json');
-
         $amendment = $this->getAmendmentWithCheck($motionSlug, $amendmentId);
         if (!$amendment) {
-            return json_encode(['success' => false, 'error' => 'Amendment not found']);
+            return new JsonResponse(['success' => false, 'error' => 'Amendment not found']);
         }
 
-        $commentId = \Yii::$app->request->post('id');
+        $commentId = (int)$this->getPostValue('id');
         $comment   = AmendmentAdminComment::findOne(['id' => $commentId, 'amendmentId' => $amendment->id]);
         if ($comment && User::isCurrentUser($comment->getMyUser())) {
             $comment->delete();
-            return json_encode(['success' => true]);
+            return new JsonResponse(['success' => true]);
         } else {
-            return json_encode(['success' => false, 'error' => 'No permission to delete this comment']);
+            return new JsonResponse(['success' => false, 'error' => 'No permission to delete this comment']);
         }
     }
 }
