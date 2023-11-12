@@ -9,6 +9,7 @@ use app\models\db\User;
 use app\plugins\ModuleBase;
 use Exception;
 use SimpleSAML\Auth\Simple;
+use Yii;
 
 class Module extends ModuleBase
 {
@@ -50,13 +51,14 @@ class Module extends ModuleBase
     public function init(): void
     {
         parent::init();
+        if (Yii::$app instanceof \yii\web\Application) {
+            $login = self::getDedicatedLoginProvider();
+            $user = User::getCurrentUser();
+            $samlClient = new Simple('nabu-sp');
 
-        $login = self::getDedicatedLoginProvider();
-        $user = User::getCurrentUser();
-        $samlClient = new Simple('nabu-sp');
-
-        if (! is_null($user) && ! $samlClient->isAuthenticated()) {
-            $login->logoutCurrentUserIfRelevant('/');
+            if (! is_null($user) && ! $samlClient->isAuthenticated()) {
+                $login->logoutCurrentUserIfRelevant('/');
+            }
         }
     }
 
