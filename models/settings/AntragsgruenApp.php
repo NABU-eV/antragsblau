@@ -22,14 +22,13 @@ class AntragsgruenApp implements \JsonSerializable
     public ?string $cookieDomain = null;
     public bool $hasSaml = false;
     public bool $prependWWWToSubdomain = true;
+    public bool $allowRegistration = true;
     public bool $confirmEmailAddresses = true;
     public bool $dataPrivacyCheckbox = false;
     public string $mailFromName = 'Antragsgrün';
     public string $mailFromEmail = '';
     /** @var int[] */
     public array $adminUserIds = [];
-    /** @var string[] */
-    public array $siteBehaviorClasses = []; // @TODO OBSOLETE
     /** @var string[] */
     public array $authClientCollection = [];
     /** @var string[] */
@@ -40,7 +39,7 @@ class AntragsgruenApp implements \JsonSerializable
     public ?string $xdvipdfmx = null; // @TODO OBSOLETE
     public ?string $lualatexPath = null;
     public bool $pdfExportConcat = true;
-    public $pdfExportIntegFrame = false; // Type: mixed, can be ether int or array
+    public mixed $pdfExportIntegFrame = false; // Type: mixed, can be ether int or array
     public array $localMessages = [];
     public ?string $imageMagickPath = null;
     public ?int $sitePurgeAfterDays = null;
@@ -48,14 +47,18 @@ class AntragsgruenApp implements \JsonSerializable
     public ?string $viewCacheFilePath = null; // If set, then view caches are saved to a separate directory, overriding the default and not using Redis
     public string $mode = 'production'; // [production | sandbox]
     public ?string $updateKey = null;
+    public ?string $jwtPrivateKey = null;
 
-    /** @var string[] */
+    /** @var array<class-string<ModuleBase>> */
     protected array $plugins = [];
 
-    /** @var string[][] */
+    /** @var array<array<class-string<ModuleBase>>> */
     protected array $sitePlugins = [];
 
     public array $mailService = ['transport' => 'sendmail'];
+
+    /** @var array{wsUri: string, stompJsUri: string, rabbitMqUri: string, rabbitMqExchangeName: string, rabbitMqUsername: string, rabbitMqPassword: string}|null */
+    public ?array $live = null;
 
     public static function getInstance(): AntragsgruenApp
     {
@@ -113,7 +116,7 @@ class AntragsgruenApp implements \JsonSerializable
     }
 
     /**
-     * @return string[]
+     * @return array<class-string<ModuleBase>>
      */
     public function getPluginNames(): array
     {
@@ -124,11 +127,14 @@ class AntragsgruenApp implements \JsonSerializable
                 $names[] = $name;
             }
         }
-        return array_unique($names);
+        /** @var array<class-string<ModuleBase>> $plugins */
+        $plugins = array_unique($names);
+
+        return $plugins;
     }
 
     /**
-     * @return ModuleBase[]
+     * @return array<string, class-string<ModuleBase>>
      */
     public function getPluginClasses(): array
     {
@@ -136,11 +142,12 @@ class AntragsgruenApp implements \JsonSerializable
         foreach ($this->getPluginNames() as $name) {
             $plugins[$name] = 'app\\plugins\\' . $name . '\\Module';
         }
+        /** @var array<class-string<ModuleBase>> $plugins */
         return $plugins;
     }
 
     /**
-     * @return ModuleBase[]
+     * @return array<string, class-string<ModuleBase>>
      */
     public static function getActivePlugins(): array
     {

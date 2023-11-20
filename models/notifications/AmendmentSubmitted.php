@@ -14,12 +14,9 @@ use yii\helpers\Html;
 
 class AmendmentSubmitted extends Base implements IEmailAdmin
 {
-    /** @var Amendment */
-    protected $amendment;
-
-    public function __construct(Amendment $amendment)
-    {
-        $this->amendment       = $amendment;
+    public function __construct(
+        protected Amendment $amendment
+    ) {
         $this->consultation = $amendment->getMyConsultation();
 
         parent::__construct();
@@ -87,7 +84,12 @@ class AmendmentSubmitted extends Base implements IEmailAdmin
             $amendmentHtml .= '</div>';
         }
 
-        $html  = nl2br(Html::encode($plain)) . '<br><br>' . $amendmentHtml;
+        if (str_contains($emailText, '<br>') || str_contains($emailText, '<p>')) {
+            $html = $plain . '<br><br>' . $amendmentHtml;
+        } else {
+            $html  = nl2br(Html::encode($plain)) . '<br><br>' . $amendmentHtml;
+        }
+
         $plain .= "\n\n" . HTMLTools::toPlainText($amendmentHtml);
 
         $plain = str_replace('%LINK%', $amendmentLink, $plain);
@@ -106,7 +108,7 @@ class AmendmentSubmitted extends Base implements IEmailAdmin
                 $plain,
                 $html
             );
-        } catch (MailNotSent | ServerConfiguration $e) {
+        } catch (MailNotSent | ServerConfiguration) {
         }
     }
 }

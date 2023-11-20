@@ -135,7 +135,7 @@ class AmendmentEditForm
         }
     }
 
-    public function setAttributes(array $values, array $files)
+    public function setAttributes(array $values, array $files): void
     {
         $consultation = $this->motion->getMyConsultation();
         if (!$this->adminMode || User::havePrivilege($consultation, Privileges::PRIVILEGE_MOTION_TEXT_EDIT, PrivilegeQueryContext::motion($this->motion))) {
@@ -244,7 +244,7 @@ class AmendmentEditForm
         $amendment->changeEditorial = $this->editorial;
         $amendment->changeExplanation = $this->reason;
         $amendment->globalAlternative = ($this->globalAlternative ? 1 : 0);
-        $amendment->agendaItemId = ($this->agendaItem ? $this->agendaItem->id : null);
+        $amendment->agendaItemId = $this->agendaItem?->id;
         $amendment->changeText = '';
         $amendment->cache = '';
 

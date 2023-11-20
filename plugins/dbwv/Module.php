@@ -4,21 +4,27 @@ declare(strict_types=1);
 
 namespace app\plugins\dbwv;
 
+use app\components\RequestContext;
 use app\models\AdminTodoItem;
-use app\models\exceptions\Internal;
+use app\models\exceptions\{Access, Internal};
+use app\models\layoutHooks\Hooks;
+use app\models\http\{HtmlResponse, ResponseInterface};
 use app\models\db\{Consultation, ConsultationMotionType, IMotion, Motion, User};
-use app\models\settings\{Layout, Privilege, PrivilegeQueryContext};
-use app\plugins\dbwv\workflow\{Step2, Workflow};
+use app\models\settings\{Layout, Privilege, PrivilegeQueryContext, Privileges};
+use app\plugins\dbwv\workflow\{Step2, Step5, Workflow};
 use app\plugins\ModuleBase;
 use yii\web\View;
 
 class Module extends ModuleBase
 {
-    public const PRIVILEGE_DBWV_V1_ASSIGN_TOPIC = -100;
+    public const PRIVILEGE_DBWV_ASSIGN_TOPIC = -100;
     public const PRIVILEGE_DBWV_V1_EDITORIAL = -101;
     public const PRIVILEGE_DBWV_V4_MOVE_TO_MAIN = -102;
+    public const PRIVILEGE_DBWV_V7_PUBLISH_RESOLUTION = -103;
 
     public const CONSULTATION_URL_BUND = 'hv';
+    public const GROUP_NAME_DELEGIERTE = 'Delegierte';
+    public const GROUP_NAME_ANTRAGSBERECHTIGT = 'Antragsberechtigte';
 
     public static function getProvidedTranslations(): array
     {
@@ -61,8 +67,8 @@ class Module extends ModuleBase
     public static function addCustomPrivileges(Consultation $consultation, array $origPrivileges): array
     {
         $origPrivileges[] = new Privilege(
-            self::PRIVILEGE_DBWV_V1_ASSIGN_TOPIC,
-            'V1: Sachgebiete zuordnen',
+            self::PRIVILEGE_DBWV_ASSIGN_TOPIC,
+            'Sachgebiete zuordnen',
             true,
             null
         );
@@ -81,6 +87,13 @@ class Module extends ModuleBase
             null
         );
 
+        $origPrivileges[] = new Privilege(
+            self::PRIVILEGE_DBWV_V7_PUBLISH_RESOLUTION,
+            'V7: Beschlüsse veröffentlichen',
+            true,
+            null
+        );
+
         return $origPrivileges;
     }
 
@@ -90,7 +103,7 @@ class Module extends ModuleBase
     }
 
     /**
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
+     * @return class-string<\app\models\settings\Consultation>
      */
     public static function getConsultationSettingsClass(Consultation $consultation): string
     {
@@ -113,6 +126,8 @@ class Module extends ModuleBase
             'workflow-step3-decide' => 'dbwv/admin-workflow/step3decide',
             'workflow-step4' => 'dbwv/admin-workflow/step4next',
             'workflow-step5-assign-number' => 'dbwv/admin-workflow/step5-assign-number',
+            'workflow-step6-decide' => 'dbwv/admin-workflow/step6decide',
+            'workflow-step7-publish-resolution' => 'dbwv/admin-workflow/step7-publish-resolution',
         ];
     }
 
@@ -125,6 +140,9 @@ class Module extends ModuleBase
         return $urls;
     }
 
+    /**
+     * @return array<string, array{title: string, preview: string|null, bundle: class-string, hooks?: class-string<Hooks>, odtTemplate?: string}>
+     */
     public static function getProvidedLayouts(?View $view = null): array
     {
         return [
@@ -149,9 +167,28 @@ class Module extends ModuleBase
     public static function canSeeFullMotionList(Consultation $consultation, User $user): ?bool
     {
         if (
-            $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_V1_ASSIGN_TOPIC, PrivilegeQueryContext::anyRestriction()) ||
+            $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_ASSIGN_TOPIC, PrivilegeQueryContext::anyRestriction()) ||
             $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_V1_EDITORIAL, PrivilegeQueryContext::anyRestriction()) ||
             $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_V4_MOVE_TO_MAIN, PrivilegeQueryContext::anyRestriction())
+        ) {
+            return true;
+        }
+
+        return null;
+    }
+
+    public static function canSeeContactDetails(IMotion $imotion, ?User $user): ?bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        $consultation = $imotion->getMyConsultation();
+        if (
+            $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_ASSIGN_TOPIC, PrivilegeQueryContext::imotion($imotion)) ||
+            $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_V1_EDITORIAL, PrivilegeQueryContext::imotion($imotion)) ||
+            $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_V4_MOVE_TO_MAIN, PrivilegeQueryContext::imotion($imotion)) ||
+            $user->hasPrivilege($consultation, self::PRIVILEGE_DBWV_V7_PUBLISH_RESOLUTION, PrivilegeQueryContext::imotion($imotion))
         ) {
             return true;
         }
@@ -162,8 +199,15 @@ class Module extends ModuleBase
     public static function onBeforeProposedProcedureStatusSave(IMotion $imotion): IMotion
     {
         if (is_a($imotion, Motion::class)) {
-            // This always switches to V3 and also enforces the proposed procedure to be only available on V2
-            return Step2::gotoNext($imotion);
+            if (in_array($imotion->version, [Workflow::STEP_V2, Workflow::STEP_V3], true)) {
+                // This always switches to V3 and also enforces the proposed procedure to be only available on V2
+                return Step2::gotoNext($imotion);
+            }
+            if (in_array($imotion->version, [Workflow::STEP_V5, Workflow::STEP_V6], true)) {
+                // This always switches to V6 and also enforces the proposed procedure to be only available on V5
+                return Step5::gotoNext($imotion);
+            }
+            throw new Access('Not allowed to perform this action (in this state)');
         }
         return $imotion;
     }
@@ -198,5 +242,38 @@ class Module extends ModuleBase
     public static function getAdminTodoItems(Consultation $consultation, User $user): ?array
     {
         return Workflow::getAdminTodoItems($consultation, $user);
+    }
+
+    public static function hasSiteHomePage(): bool
+    {
+        return true;
+    }
+
+    public static function getSiteHomePage(): ?ResponseInterface
+    {
+        return new HtmlResponse(RequestContext::getController()->render('@app/plugins/dbwv/views/index'));
+    }
+
+    public static function preferConsultationSpecificHomeLink(): bool
+    {
+        return true;
+    }
+
+    public static function currentUserCanSeeMotions(): bool
+    {
+        if (!User::getCurrentUser()) {
+            return false;
+        }
+
+        foreach (User::getCurrentUser()->userGroups as $group) {
+            if ($group->getGroupPermissions()->containsPrivilege(Privileges::PRIVILEGE_ANY, PrivilegeQueryContext::anyRestriction())) {
+                return true;
+            }
+            if ($group->title === Module::GROUP_NAME_DELEGIERTE) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

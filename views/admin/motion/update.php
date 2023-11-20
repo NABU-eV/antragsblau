@@ -1,7 +1,7 @@
 <?php
 
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
-use app\components\{Tools, UrlHelper};
+use app\components\{MotionSorter, Tools, UrlHelper};
 use app\models\db\{ConsultationAgendaItem, ConsultationSettingsTag, Motion, MotionSupporter, User};
 use yii\helpers\Html;
 
@@ -135,10 +135,43 @@ echo '<div class="content form-horizontal">';
             $stats = $consultation->getStatuses()->getStatusNamesVisibleForAdmins();
             $options = ['id' => 'motionStatus', 'class' => 'stdDropdown fullsize'];
             echo Html::dropDownList('motion[status]', $motion->status, $stats, $options);
-            echo '</div><div class="rightColumn">';
-            $options = ['class' => 'form-control', 'id' => 'motionStatusString', 'placeholder' => '...'];
-            echo Html::textInput('motion[statusString]', $motion->statusString, $options);
             ?>
+        </div>
+        <div class="rightColumn">
+            <div class="motionStatusString">
+                <?php
+                $options = ['class' => 'form-control', 'id' => 'motionStatusString', 'placeholder' => '...'];
+                echo Html::textInput('motion[statusString]', $motion->statusString, $options);
+                ?>
+            </div>
+            <div class="motionStatusMotion hidden">
+                <?php
+                $options = ['class' => 'stdDropdown', 'id' => 'motionStatusMotion', 'placeholder' => '...'];
+                $items = ['' => '...'];
+                $motions = $consultation->motions;
+                usort($motions, fn(Motion $motion1, Motion $motion2): int => MotionSorter::getSortedMotionsSort($motion1->titlePrefix, $motion2->titlePrefix));
+                $hasVersions = count(array_filter($motions, fn(Motion $mot): bool => $mot->version !== Motion::VERSION_DEFAULT)) > 0;
+                foreach ($motions as $mot) {
+                    $items[$mot->id] = $mot->getTitleWithPrefix();
+                    if ($hasVersions) {
+                        $items[$mot->id] .= ' (' . Yii::t('motion', 'version') . ' ' . $mot->version . ')';
+                    }
+                }
+                echo Html::dropDownList('motion[statusStringMotion]', $motion->statusString, $items, $options);
+                ?>
+            </div>
+            <div class="motionStatusAmendment hidden">
+                <?php
+                $options = ['class' => 'stdDropdown', 'id' => 'motionStatusAmendment', 'placeholder' => '...'];
+                $items = ['' => '...'];
+                foreach ($motions as $mot) {
+                    foreach ($mot->amendments as $amend) {
+                        $items[$amend->id] = $amend->getTitleWithPrefix();
+                    }
+                }
+                echo Html::dropDownList('motion[statusStringAmendment]', $motion->statusString, $items, $options);
+                ?>
+            </div>
         </div>
     </div>
 

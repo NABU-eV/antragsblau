@@ -222,9 +222,9 @@ class DiffRenderer
 
     /**
      * @internal
-     * @param \DOMText|\DOMElement|null $lastEl
+     * @return array{array<\DOMNode>, ?string, ?string}
      */
-    public function textToNodes(string $text, ?string $inIns, ?string $inDel, $lastEl): array
+    public function textToNodes(string $text, ?string $inIns, ?string $inDel, ?\DOMNode $lastEl): array
     {
         $nodes     = [];
         $lastIsIns = ($lastEl && is_a($lastEl, \DOMElement::class) && $lastEl->nodeName == 'ins');
@@ -267,6 +267,7 @@ class DiffRenderer
                     $text = '';
                 }
             } else {
+                /** @var string[] $split */
                 $split = preg_split('/(###(?:INS|DEL)_START([^#]{0,20})###)/siu', $text, 2, PREG_SPLIT_DELIM_CAPTURE);
                 if (count($split) === 4) {
                     if ($split[0] !== '') {
@@ -498,7 +499,7 @@ class DiffRenderer
             'data-changedata'       => '',
             'data-time'             => $time,
             'data-last-change-time' => $time,
-            'data-append-hint'      => '[' . $amendment->titlePrefix . ']',
+            'data-append-hint'      => '[' . $amendment->getFormattedTitlePrefix() . ']',
             'data-link'             => UrlHelper::createAmendmentUrl($amendment),
             'data-amendment-id'     => $amendment->id,
         ];

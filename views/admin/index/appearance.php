@@ -127,7 +127,7 @@ $handledSiteSettings = [];
                 <div class="customThemeSelector">
                     <label>
                         <?php
-                        $isCustom  = (strpos($layoutId, 'layout-custom-') !== false);
+                        $isCustom  = str_contains($layoutId, 'layout-custom-');
                         $hasCustom = (count($consultation->site->getSettings()->stylesheetSettings) > 0);
                         $options   = ['value' => $layoutId];
                         if (!$hasCustom) {
@@ -164,6 +164,15 @@ $handledSiteSettings = [];
                         ['id' => 'startLayoutType', 'class' => 'stdDropdown fullsize']
                     );
                     ?></div>
+                <?php
+                if ($consultation->getSettings()->startLayoutType === ConsultationSettings::START_LAYOUT_TAGS) {
+                    echo '<a href="' . Html::encode(UrlHelper::createUrl('/admin/index/consultation')) . '#conTopicsTitle">';
+                    echo '<span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span>';
+                    echo Yii::t('admin', 'con_topics_manage') . '</a><br>';
+
+                    $boolSettingRow($settings, 'homepageTagsList', $handledSettings, Yii::t('admin', 'con_topics_home_list'));
+                }
+                ?>
             </fieldset>
 
             <fieldset class="form-group selectRow">
@@ -285,6 +294,30 @@ $handledSiteSettings = [];
             $propTitle = Yii::t('admin', 'con_proposal_procedure');
             $tooltip   = HTMLTools::getTooltipIcon(Yii::t('admin', 'con_proposal_tt'));
             $boolSettingRow($settings, 'proposalProcedurePage', $handledSettings, $propTitle . ' ' . $tooltip);
+
+            $showResolutionsCombined = $settings->startLayoutResolutions === ConsultationSettings::START_LAYOUT_RESOLUTIONS_ABOVE;
+            $motionsByDefault = in_array($settings->startLayoutResolutions, [ConsultationSettings::START_LAYOUT_RESOLUTIONS_SEPARATE, ConsultationSettings::START_LAYOUT_RESOLUTIONS_ABOVE]);
+            ?>
+            <div><label>
+                <?= Html::checkbox('settings[showResolutionsCombined]', $showResolutionsCombined, ['id' => 'showResolutionsCombined']) . ' ';
+                echo Yii::t('admin', 'con_resol_comb_both');
+            ?></label></div>
+            <div class="showResolutionsSeparateHolder">
+                <label>
+                    <?= Html::radio('settings[showResolutionsSeparateMode]', $motionsByDefault, ['value' => ConsultationSettings::START_LAYOUT_RESOLUTIONS_SEPARATE]) ?>
+                    <?= Yii::t('admin', 'con_resol_comb_motions') ?>
+                </label>
+                <label>
+                    <?= Html::radio('settings[showResolutionsSeparateMode]', !$motionsByDefault, ['value' => ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT]) ?>
+                    <?= Yii::t('admin', 'con_resol_comb_res') ?>
+                </label>
+            </div>
+
+            <?php
+
+            $propTitle = Yii::t('admin', 'con_pp_inline');
+            $tooltip   = HTMLTools::getTooltipIcon(Yii::t('admin', 'con_pp_inline_tt'));
+            $boolSettingRow($settings, 'proposalProcedureInline', $handledSettings, $propTitle . ' ' . $tooltip);
 
             $propTitle = Yii::t('admin', 'con_collecting');
             $tooltip   = HTMLTools::getTooltipIcon(Yii::t('admin', 'con_collecting_tt'));

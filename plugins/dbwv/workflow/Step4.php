@@ -4,24 +4,26 @@ declare(strict_types=1);
 
 namespace app\plugins\dbwv\workflow;
 
-use app\components\MotionNumbering;
-use app\components\RequestContext;
-use app\components\Tools;
-use app\components\UrlHelper;
+use app\components\{MotionNumbering, RequestContext, Tools, UrlHelper};
 use app\models\AdminTodoItem;
-use app\models\db\IMotion;
-use app\models\db\Motion;
-use app\models\db\MotionSupporter;
+use app\models\db\{ConsultationSettingsTag, IMotion, Motion, MotionSupporter};
 use app\models\exceptions\Access;
 use app\models\forms\MotionDeepCopy;
 use app\plugins\dbwv\Module;
-use app\models\settings\{PrivilegeQueryContext, Privileges};
 
 class Step4
 {
     public static function getAdminTodo(Motion $motion): ?AdminTodoItem
     {
         if (MotionNumbering::findMotionInHistoryOfVersion($motion, Workflow::STEP_V5)) {
+            return null;
+        }
+        if (!in_array($motion->status, [
+            IMotion::STATUS_RESOLUTION_FINAL,
+            IMotion::STATUS_RESOLUTION_FINAL,
+            IMotion::STATUS_ACCEPTED,
+            IMotion::STATUS_MODIFIED_ACCEPTED,
+        ])) {
             return null;
         }
 
@@ -32,7 +34,10 @@ class Step4
                 'In die Hauptversammlung übernehmen',
                 UrlHelper::createMotionUrl($motion),
                 Tools::dateSql2timestamp($motion->dateCreation),
-                $motion->getInitiatorsStr()
+                $motion->getInitiatorsStr(),
+                AdminTodoItem::TARGET_MOTION,
+                $motion->id,
+                $motion->getFormattedTitlePrefix(),
             );
         }
 
@@ -60,7 +65,32 @@ class Step4
         return $html;
     }
 
-    public static function moveToMain(Motion $motion, ?int $newTagId): Motion
+    public static function getCorrespondingTagFromMain(ConsultationSettingsTag $lvTag): ConsultationSettingsTag
+    {
+        $main = Module::getBundConsultation();
+        foreach ($main->tags as $mainTag) {
+            if (mb_strtolower($mainTag->title) === mb_strtolower($lvTag->title) && $mainTag->type === $lvTag->type) {
+                return $mainTag;
+            }
+        }
+
+        if ($lvTag->parentTag) {
+            $mainParentTag = self::getCorrespondingTagFromMain($lvTag->parentTag);
+        } else {
+            $mainParentTag = null;
+        }
+        $mainTag = new ConsultationSettingsTag();
+        $mainTag->consultationId = $main->id;
+        $mainTag->parentTagId = $mainParentTag?->id;
+        $mainTag->type = $lvTag->type;
+        $mainTag->title = $lvTag->title;
+        $mainTag->position = 0;
+        $mainTag->save();
+
+        return $mainTag;
+    }
+
+    public static function moveToMain(Motion $motion): Motion
     {
         if (!Workflow::canMoveToMainV4($motion)) {
             throw new Access('Not allowed to perform this action (generally)');
@@ -80,25 +110,12 @@ class Step4
             null,
             '',
             Workflow::STEP_V5,
-            true
+            true,
+            [MotionDeepCopy::SKIP_SUPPORTERS, MotionDeepCopy::SKIP_COMMENTS, MotionDeepCopy::SKIP_PROPOSED_PROCEDURE]
         );
         $v5Motion->status = IMotion::STATUS_SUBMITTED_UNSCREENED;
-        $v5Motion->proposalStatus = null;
-        $v5Motion->proposalReferenceId = null;
-        $v5Motion->proposalVisibleFrom = null;
-        $v5Motion->proposalComment = null;
-        $v5Motion->proposalNotification = null;
-        $v5Motion->proposalUserStatus = null;
-        $v5Motion->proposalExplanation = null;
-        $v5Motion->votingBlockId = null;
-        $v5Motion->votingData = null;
-        $v5Motion->votingStatus = null;
-        $v5Motion->responsibilityId = null;
         $v5Motion->save();
 
-        foreach ($v5Motion->motionSupporters as $motionSupporter) {
-            $v5Motion->unlink('motionSupporters', $motionSupporter, true);
-        }
         $newProposer = new MotionSupporter();
         $newProposer->motionId = $v5Motion->id;
         $newProposer->position = 0;
@@ -110,10 +127,12 @@ class Step4
         $newProposer->dateCreation = date('Y-m-d H:i:s');
         $newProposer->save();
 
-        if ($newTagId) {
-            $newTag = Module::getBundConsultation()->getTagById($newTagId);
+        foreach ($motion->tags as $tag) {
+            $newTag = self::getCorrespondingTagFromMain($tag);
             $v5Motion->link('tags', $newTag);
         }
+
+        AdminTodoItem::flushConsultationTodoCount();
 
         return $v5Motion;
     }

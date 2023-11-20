@@ -21,7 +21,7 @@ $consultation = $amendment->getMyConsultation();
 $motion = $amendment->getMyMotion();
 $motionType   = $motion->getMyMotionType();
 $hasPp = $amendment->getMyMotionType()->getSettingsObj()->hasProposedProcedure;
-$hasPpAdminbox = $amendment->canEditProposedProcedure();
+$hasPpAdminbox = ($hasPp && $amendment->canEditLimitedProposedProcedure());
 
 /** @var \app\controllers\Base $controller */
 $controller = $this->context;
@@ -43,10 +43,10 @@ if ($controller->isRequestSet('backUrl') && $controller->isRequestSet('backTitle
     }
     if ($amendment->amendingAmendmentId) {
         $amendedAmendment = $amendment->amendedAmendment;
-        $layout->addBreadcrumb($amendedAmendment->titlePrefix, UrlHelper::createAmendmentUrl($amendedAmendment));
+        $layout->addBreadcrumb($amendedAmendment->getFormattedTitlePrefix(), UrlHelper::createAmendmentUrl($amendedAmendment));
     }
-    if (!$consultation->getSettings()->hideTitlePrefix && $amendment->titlePrefix != '') {
-        $layout->addBreadcrumb($amendment->titlePrefix);
+    if (!$consultation->getSettings()->hideTitlePrefix && $amendment->getFormattedTitlePrefix() != '') {
+        $layout->addBreadcrumb($amendment->getFormattedTitlePrefix());
     } else {
         $layout->addBreadcrumb(Yii::t('amend', 'amendment'));
     }
@@ -207,7 +207,7 @@ if (count($amendingAmendments) > 0) {
     echo '<ul class="amendments">';
     foreach ($amendingAmendments as $amendingAmendment) {
         echo '<li>';
-        $aename = $amendingAmendment->titlePrefix;
+        $aename = $amendingAmendment->getFormattedTitlePrefix();
         if ($aename === '') {
             $aename = $amendingAmendment->id;
         }

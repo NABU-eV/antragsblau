@@ -12,13 +12,15 @@ use yii\helpers\Html;
  */
 
 
-$pdfLayout = new BDK($motion->motionType);
-$pdf       = $pdfLayout->createPDFClass();
+$pdfLayout = new BDK($motion->getMyMotionType());
+/** @var \app\views\pdfLayouts\BDKPDF $pdf */
+$pdf = $pdfLayout->createPDFClass();
 
 // set document information
 $pdf->SetCreator(Yii::t('export', 'default_creator'));
 $pdf->SetTitle(Yii::t('motion', 'Motion') . " " . $motion->getTitleWithPrefix() . ' - Merge Configuration');
 $pdf->SetSubject(Yii::t('motion', 'Motion') . " " . $motion->getTitleWithPrefix() . ' - Merge Configuration');
+$pdf->setMotionTitle($motion->getTitleWithPrefix(), Yii::t('export', 'draft'));
 
 $pdf->startPageGroup();
 $pdf->AddPage();
@@ -30,7 +32,7 @@ $motionData .= Yii::t('export', 'pdf_merging_init');
 $motionData .= '</div><br>';
 
 $motionData .= '<span style="font-size: 20px; font-weight: bold">';
-$motionData .= Html::encode($motion->titlePrefix) . ' </span>';
+$motionData .= Html::encode($motion->getFormattedTitlePrefix()) . ' </span>';
 $motionData .= '<span style="font-size: 16px;">';
 $motionData .= Html::encode($motion->title) . '</span>';
 
@@ -53,7 +55,7 @@ foreach ($amendments as $amendment) {
         $table .= 'X';
     }
     $table .= '</td><td>';
-    $table .= Html::encode($amendment->titlePrefix);
+    $table .= Html::encode($amendment->getFormattedTitlePrefix());
     $table .= '</td><td>';
     $table .= $amendment->getFormattedStatus();
     $table .= '</td><td>';

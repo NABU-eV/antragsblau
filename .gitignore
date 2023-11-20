@@ -13,12 +13,14 @@ config/drupal_civicrm.json
 config/discourse.json
 config/config_tests.json
 config/config_tests_yfj.json
+config/config_tests_dbwv.json
 config/DEBUG
 config/update-private.key
 config/latex-replaces.php
 web/js/bower
 assets/local/
 tests/_output/*
+tests/Support/_generated/*
 node_modules/
 npm-debug.log
 /web/updates/

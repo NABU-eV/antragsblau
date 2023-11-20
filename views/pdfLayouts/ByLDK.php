@@ -24,17 +24,17 @@ class ByLDK extends IPDFLayout
         }
 
         if (!$settings->hideTitlePrefix) {
-            $revName = $motion->titlePrefix;
+            $revName = $motion->getFormattedTitlePrefix();
             if (grapheme_strlen($revName) > 25) {
                 $revName = grapheme_substr($revName, 0, 24) . '…';
             }
             if ($revName === '') {
                 $revName = \Yii::t('export', 'draft');
                 $pdf->SetFont('helvetica', 'I', 25);
-                $width = $pdf->GetStringWidth($revName, 'helvetica', 'I', 25) + 3.1;
+                $width = (float)$pdf->GetStringWidth($revName, 'helvetica', 'I', 25) + 3.1;
             } else {
                 $pdf->SetFont('helvetica', 'B', 25);
-                $width = $pdf->GetStringWidth($revName, 'helvetica', 'B', 25) + 3.1;
+                $width = (float)$pdf->GetStringWidth($revName, 'helvetica', 'B', 25) + 3.1;
             }
             if ($width < 35) {
                 $width = 35;
@@ -63,7 +63,7 @@ class ByLDK extends IPDFLayout
 
         $str = $motion->motionType->titleSingular;
         $pdf->SetFont('helvetica', 'B', 25);
-        $width = $pdf->GetStringWidth($str);
+        $width = (float)$pdf->GetStringWidth($str);
 
         $pdf->SetXY((210 - $width) / 2, 60);
         $pdf->Write(20, $str);
@@ -88,17 +88,24 @@ class ByLDK extends IPDFLayout
         }
 
         $pdf->SetX(12);
-
         $pdf->SetFont('helvetica', 'B', 12);
         $pdf->MultiCell(12, 0, '', 0, 'L', false, 0);
         $pdf->MultiCell(50, 0, \Yii::t('export', 'Initiators') . ':', 0, 'L', false, 0);
         $pdf->SetFont('helvetica', '', 12);
         $pdf->MultiCell(120, 0, $motion->getInitiatorsStr(), 0, 'L');
-
         $pdf->Ln(5);
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && $motion->proposalStatus !== null && $motion->isProposalPublic()) {
+            $pdf->SetX(12);
+            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->MultiCell(12, 0, '', 0, 'L', false, 0);
+            $pdf->MultiCell(50, 0, \Yii::t('export', 'proposed_procedure') . ':', 0, 'L', false, 0);
+            $pdf->SetFont('helvetica', '', 12);
+            $pdf->MultiCell(120, 0, $motion->getFormattedProposalStatus(), 0, 'L');
+            $pdf->Ln(5);
+        }
+
         $pdf->SetX(12);
-
-
         $pdf->SetFont('helvetica', 'B', 12);
         $pdf->MultiCell(12, 0, '', 0, 'L', false, 0);
 
@@ -126,20 +133,24 @@ class ByLDK extends IPDFLayout
         $pdf->startPageGroup();
         $pdf->AddPage();
 
-        if (file_exists($settings->logoUrl)) {
-            $pdf->setJPEGQuality(100);
-            $pdf->Image($settings->logoUrl, 22, 32, 47, 26);
+        try {
+            if (file_exists($settings->logoUrl)) {
+                $pdf->setJPEGQuality(100);
+                $pdf->Image($settings->logoUrl, 22, 32, 47, 26);
+            }
+        } catch (\Throwable $e) {
+            // Catches an \ErrorException thrown with open_basedir restrictions. See https://github.com/CatoTH/antragsgruen/issues/811
         }
 
         if (!$settings->hideTitlePrefix) {
-            $revName = $amendment->titlePrefix;
+            $revName = $amendment->getFormattedTitlePrefix();
             if ($revName === '') {
                 $revName = \Yii::t('export', 'draft');
                 $pdf->SetFont('helvetica', 'I', 25);
-                $width = $pdf->GetStringWidth($revName, 'helvetica', 'I', 25) + 3.1;
+                $width = (float)$pdf->GetStringWidth($revName, 'helvetica', 'I', 25) + 3.1;
             } else {
                 $pdf->SetFont('helvetica', 'B', 25);
-                $width = $pdf->GetStringWidth($revName, 'helvetica', 'B', 25) + 3.1;
+                $width = (float)$pdf->GetStringWidth($revName, 'helvetica', 'B', 25) + 3.1;
             }
             if ($width < 35) {
                 $width = 35;
@@ -168,7 +179,7 @@ class ByLDK extends IPDFLayout
 
         $str = $amendment->getMyMotion()->motionType->titleSingular;
         $pdf->SetFont('helvetica', 'B', 25);
-        $width = $pdf->GetStringWidth($str);
+        $width = (float)$pdf->GetStringWidth($str);
 
         $pdf->SetXY((210 - $width) / 2, 60);
         $pdf->Write(20, $str);
@@ -194,17 +205,24 @@ class ByLDK extends IPDFLayout
 
 
         $pdf->SetX(12);
-
         $pdf->SetFont('helvetica', 'B', 12);
         $pdf->MultiCell(12, 0, '', 0, 'L', false, 0);
         $pdf->MultiCell(50, 0, \Yii::t('export', 'Initiators') . ':', 0, 'L', false, 0);
         $pdf->SetFont('helvetica', '', 12);
         $pdf->MultiCell(120, 0, $amendment->getInitiatorsStr(), 0, 'L');
-
         $pdf->Ln(5);
+
+        if ($amendment->getMyMotionType()->getSettingsObj()->showProposalsInExports && $amendment->proposalStatus !== null && $amendment->isProposalPublic()) {
+            $pdf->SetX(12);
+            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->MultiCell(12, 0, '', 0, 'L', false, 0);
+            $pdf->MultiCell(50, 0, \Yii::t('export', 'proposed_procedure') . ':', 0, 'L', false, 0);
+            $pdf->SetFont('helvetica', '', 12);
+            $pdf->MultiCell(120, 0, $amendment->getFormattedProposalStatus(), 0, 'L');
+            $pdf->Ln(5);
+        }
+
         $pdf->SetX(12);
-
-
         $pdf->SetFont('helvetica', 'B', 12);
         $pdf->MultiCell(12, 0, '', 0, 'L', false, 0);
 

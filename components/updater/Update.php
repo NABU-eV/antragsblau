@@ -130,8 +130,10 @@ class Update
             if (!$updateJson || !$signature) {
                 throw new \Exception('Could not get update.json or update.json.signature from the ZIP file');
             }
+            /** @var non-empty-string $updateSignature */
             $updateSignature = base64_decode($signature);
-            $publicKey       = base64_decode(file_get_contents(__DIR__ . '/../../config/update-public.key'));
+            /** @var non-empty-string $publicKey */
+            $publicKey       = base64_decode((string)file_get_contents(__DIR__ . '/../../config/update-public.key'));
             if (!sodium_crypto_sign_verify_detached($updateSignature, $updateJson, $publicKey)) {
                 throw new \Exception('The signature of the update file is invalid');
             }

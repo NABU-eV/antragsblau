@@ -29,18 +29,24 @@ class Step2
                 str_replace('%TYPE%', $motion->getMyMotionType()->titleSingular, \Yii::t('admin', 'todo_motion_screen')),
                 UrlHelper::createUrl(['/admin/motion-list/index']),
                 Tools::dateSql2timestamp($motion->dateCreation),
-                $description
+                $description,
+                AdminTodoItem::TARGET_MOTION,
+                $motion->id,
+                $motion->getFormattedTitlePrefix(),
             );
         }
 
         if (Workflow::canSetRecommendationV2($motion)) {
             return new AdminTodoItem(
                 'todoDbwvSetPp' . $motion->id,
-                $motion->title,
+                $motion->getTitleWithPrefix(),
                 'Verfahrensvorschlag erarbeiten',
                 UrlHelper::createMotionUrl($motion),
                 Tools::dateSql2timestamp($motion->dateCreation),
-                $motion->getInitiatorsStr()
+                $motion->getInitiatorsStr(),
+                AdminTodoItem::TARGET_MOTION,
+                $motion->id,
+                $motion->getFormattedTitlePrefix(),
             );
         }
 
@@ -88,6 +94,8 @@ class Step2
             $v3Motion = $motion;
         }
         unset($motion);
+
+        AdminTodoItem::flushConsultationTodoCount();
 
         return $v3Motion;
     }

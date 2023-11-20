@@ -163,7 +163,9 @@
   }
   .contactShow {
     font-size: 0.8em;
+    font-weight: normal;
     margin-left: 15px;
+    padding: 0;
   }
   .explanation {
     font-size: 0.8em;
@@ -331,6 +333,16 @@
 
     #fullTextHolder {
       margin-top: 30px;
+      display: flex;
+      width: 100%;
+
+      .textHolder {
+        width: 70%;
+      }
+      .btnHolder {
+        width: 30%;
+        text-align: right;
+      }
     }
   }
 
@@ -343,10 +355,18 @@
     .control-label {
       font-weight: bold;
     }
+    .leftColumn {
+      padding-top: 18px;
+    }
 
-    .contact-head {
+    .contactHead {
       margin-top: 20px;
       margin-bottom: 10px;
+      @media screen and (min-width: $screenMinWith) {
+        width: 70%;
+        text-align: center;
+      }
+
       h3 {
         font-size: 18px;
         margin: 0;
@@ -389,13 +409,34 @@
     .rowDeleter, .rowDeleter:link, .rowDeleter:visited {
       color: $colorDelLink;
       display: inline-block;
-      margin-top: 8px;
     }
-    html.no-touchevents & .rowDeleter {
-      visibility: hidden;
+    @media (hover: hover) {
+      & .rowDeleter {
+        opacity: 0;
+      }
+      &:hover .rowDeleter, &:focus-within .rowDeleter {
+        opacity: 1;
+      }
     }
-    html.no-touchevents &:hover .rowDeleter {
-      visibility: visible;
+  }
+  .supporterRow {
+    margin-bottom: 10px;
+  }
+  .initiatorRow .rightColumn, .supporterRow {
+    display: flex;
+    width: 100%;
+
+    .nameCol { // Hint: does not exist for .supporterRow
+      flex-basis: 65%;
+      flex-grow: 0;
+      padding-right: 10px;
+    }
+    .orgaCal {
+      flex-grow: 1;
+    }
+    .delCol {
+      flex-basis: 20px;
+      flex-grow: 0;
     }
   }
   .moreInitiatorsAdder {

@@ -84,8 +84,9 @@ class AmendmentController extends AdminBase
                 continue;
             }
             foreach ($motion->getVisibleAmendments($withdrawn) as $amendment) {
-                $content = $this->renderPartial('@app/views/amendment/view_odt', ['amendment' => $amendment]);
-                $zip->addFile($amendment->getFilenameBase(false) . '.odt', $content);
+                $doc = $amendment->getMyMotionType()->createOdtTextHandler();
+                LayoutHelper::printAmendmentToOdt($amendment, $doc);
+                $zip->addFile($amendment->getFilenameBase(false) . '.odt', $doc->finishAndGetDocument());
             }
         }
 
@@ -162,7 +163,7 @@ class AmendmentController extends AdminBase
         $motion->refresh();
     }
 
-    public function actionUpdate(string $amendmentId): ResponseInterface
+    public function actionUpdate(int $amendmentId): ResponseInterface
     {
         $consultation = $this->consultation;
 
@@ -182,11 +183,12 @@ class AmendmentController extends AdminBase
         $post = $this->getHttpRequest()->post();
 
         if ($this->isPostSet('screen') && $amendment->isInScreeningProcess() && User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, $privCtx)) {
-            if ($amendment->getMyMotion()->findAmendmentWithPrefix($post['titlePrefix'], $amendment)) {
+            $toSetPrefix = (mb_strlen($post['titlePrefix']) > 45 ? mb_substr($post['titlePrefix'], 0, 45) : $post['titlePrefix']);
+            if ($amendment->getMyMotion()->findAmendmentWithPrefix($toSetPrefix, $amendment)) {
                 $this->getHttpSession()->setFlash('error', \Yii::t('admin', 'amend_prefix_collision'));
             } else {
-                $amendment->status      = Amendment::STATUS_SUBMITTED_SCREENED;
-                $amendment->titlePrefix = $post['titlePrefix'];
+                $amendment->status = Amendment::STATUS_SUBMITTED_SCREENED;
+                $amendment->titlePrefix = $toSetPrefix;
                 $amendment->save();
                 $amendment->trigger(Amendment::EVENT_PUBLISHED, new AmendmentEvent($amendment));
                 $this->getHttpSession()->setFlash('success', \Yii::t('admin', 'amend_screened'));
@@ -219,13 +221,21 @@ class AmendmentController extends AdminBase
             }
 
             $amdat                        = $post['amendment'];
-            $amendment->statusString      = mb_substr($amdat['statusString'], 0, 55);
             $amendment->dateCreation      = Tools::dateBootstraptime2sql($amdat['dateCreation']);
             $amendment->noteInternal      = $amdat['noteInternal'];
-            $amendment->status            = intval($amdat['status']);
             $amendment->globalAlternative = (isset($amdat['globalAlternative']) ? 1 : 0);
             $amendment->dateResolution    = null;
             $amendment->notCommentable = (isset($amdat['notCommentable']) ? 1 : 0);
+
+            $amendment->status       = intval($amdat['status']);
+            if ($amendment->status === Motion::STATUS_OBSOLETED_BY_MOTION) {
+                $amendment->statusString = (string)intval($amdat['statusStringMotion']);
+            } elseif ($amendment->status === Motion::STATUS_OBSOLETED_BY_AMENDMENT) {
+                $amendment->statusString = (string)intval($amdat['statusStringAmendment']);
+            } else {
+                $amendment->statusString = mb_substr($amdat['statusString'], 0, 55);
+            }
+
             $amendment->setExtraDataKey(
                 Amendment::EXTRA_DATA_VIEW_MODE_FULL,
                 (isset($amdat['viewMode']) && $amdat['viewMode'] === '1')
@@ -242,10 +252,11 @@ class AmendmentController extends AdminBase
                 }
             }
 
-            if ($amendment->getMyMotion()->findAmendmentWithPrefix($amdat['titlePrefix'], $amendment)) {
+            $toSetPrefix = (mb_strlen($amdat['titlePrefix']) > 45 ? mb_substr($amdat['titlePrefix'], 0, 45) : $amdat['titlePrefix']);
+            if ($amendment->getMyMotion()->findAmendmentWithPrefix($toSetPrefix, $amendment)) {
                 $this->getHttpSession()->setFlash('error', \Yii::t('admin', 'amend_prefix_collision'));
             } else {
-                $amendment->titlePrefix = $post['amendment']['titlePrefix'];
+                $amendment->titlePrefix = $toSetPrefix;
             }
 
             foreach (AntragsgruenApp::getActivePlugins() as $plugin) {

@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", () => {
     let el = document.querySelector(".scrollToBottom");
+    if (el === null) return;
+
     el.addEventListener("click", function () {
         window.scrollTo({
             top: document.body.scrollHeight,

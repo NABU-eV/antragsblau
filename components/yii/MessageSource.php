@@ -10,14 +10,13 @@ class MessageSource extends \yii\i18n\MessageSource
 {
     public string $basePath = '@app/messages';
 
-    public function init()
+    public function init(): void
     {
         parent::init();
         if (YII_DEBUG) {
             $this->on(self::EVENT_MISSING_TRANSLATION, function ($event) {
-                /** \yii\i18n\MissingTranslationEvent $event */
-                /** @var AntragsgruenApp $params */
-                $params = \Yii::$app->params;
+                $params = AntragsgruenApp::getInstance();
+                /** @var resource $fp */
                 $fp     = fopen($params->getTmpDir() . 'missing-translations.log', 'a');
                 fwrite($fp, $event->language . ' - ' . $event->category . ' - ' . $event->message . "\n");
                 fclose($fp);
@@ -89,6 +88,7 @@ class MessageSource extends \yii\i18n\MessageSource
                 'de-parteitag'       => 'Konferenz / Parteitag',
                 'de-bewerbung'       => 'Bewerbungsverfahren',
                 'de-programm'        => 'Programmdiskussion',
+                'de-aevorschlaege'   => 'Änderungsvorschläge',
                 'de-bdk'             => 'BDK',
             ], $localMessages);
         }

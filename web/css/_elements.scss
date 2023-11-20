@@ -2,19 +2,6 @@ html {
   height: 100%;
 }
 
-body {
-  font-family: $bodyFont;
-  height: 100%;
-
-  &.fullscreen {
-    .container {
-      width: auto;
-      margin-left: 10px;
-      margin-right: 10px;
-    }
-  }
-}
-
 blockquote {
   margin: 3px 3px 3px 15px;
   border-left: dotted 2px gray;
@@ -40,11 +27,17 @@ a {
 del, ul.deleted, ol.deleted, li.deleted, blockquote.deleted, pre.deleted, div.deleted, p.deleted, h1.deleted, h2.deleted, h3.deleted, h4.deleted, h5.deleted {
   color: #880000;
   text-decoration: line-through;
+  @if $delFontBold {
+    font-weight: bold;
+  }
 }
 
 ins, ul.inserted, ol.inserted, li.inserted, blockquote.inserted, pre.inserted, div.inserted, p.inserted, h1.inserted, h2.inserted, h3.inserted, h4.inserted, h5.inserted {
   color: #008800;
   text-decoration: underline;
+  @if $insFontBold {
+    font-weight: bold;
+  }
 }
 
 del.space, ins.space, del.formatting, ins.formatting {
@@ -178,6 +171,10 @@ button.link {
     .middleColumn + .rightColumn {
       flex-basis: 30%;
     }
+    .halfColumn {
+      flex-basis: 50%;
+      padding-left: 15px;
+    }
 
     .modal-body & {
       .leftColumn {
@@ -224,4 +221,10 @@ button.link {
     margin: 0;
     padding: 0;
   }
+}
+
+.saveholder {
+  clear: both;
+  padding: 10px;
+  text-align: center;
 }

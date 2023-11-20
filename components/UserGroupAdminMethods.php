@@ -5,9 +5,7 @@ namespace app\components;
 use app\components\mail\Tools as MailTools;
 use app\models\exceptions\{AlreadyExists, FormError, MailNotSent, UserEditFailed};
 use app\models\consultationLog\UserGroupChange;
-use app\models\settings\AntragsgruenApp;
-use app\models\settings\Privileges;
-use app\models\settings\UserGroupPermissions;
+use app\models\settings\{AntragsgruenApp, Privileges, UserGroupPermissions};
 use app\models\db\{Consultation, ConsultationLog, ConsultationUserGroup, EMailLog, User};
 use yii\web\{Request, Session};
 
@@ -79,7 +77,11 @@ class UserGroupAdminMethods
 
     private function logUserGroupAdd(User $user, ConsultationUserGroup $group): void
     {
-        $changeData = UserGroupChange::create(User::getCurrentUser()->id, User::getCurrentUser()->auth)->jsonSerialize();
+        if (User::getCurrentUser()) {
+            $changeData = UserGroupChange::create(User::getCurrentUser()->id, User::getCurrentUser()->auth)->jsonSerialize();
+        } else {
+            $changeData = null;
+        }
         ConsultationLog::log($this->consultation, $user->id, ConsultationLog::USER_ADD_TO_GROUP, $group->id, $changeData);
     }
 
@@ -96,6 +98,15 @@ class UserGroupAdminMethods
     {
         $user = User::findOne(['id' => $userId]);
         $userHasGroups = [];
+
+        $selectableUserGroups = $user->getSelectableUserGroups($this->consultation);
+        if ($selectableUserGroups !== null) {
+            foreach ($groupIds as $groupId) {
+                if (!in_array($groupId, $selectableUserGroups)) {
+                    throw new UserEditFailed('User group not allowed for this user: ' . $groupId);
+                }
+            }
+        }
 
         // Remove all groups belonging to this consultation that are not in the array sent by the client
         foreach ($user->userGroups as $userGroup) {
@@ -462,7 +473,7 @@ class UserGroupAdminMethods
             $password = User::createPassword();
         }
 
-        if ($authType === 'email') {
+        if ($authType === User::AUTH_EMAIL) {
             $auth = 'email:' . $authUsername;
             $email = $authUsername;
         } else {

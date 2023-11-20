@@ -1,5 +1,6 @@
 <?php
 use app\components\UrlHelper;
+use app\models\AdminTodoItem;
 use app\models\settings\{PrivilegeQueryContext, Privileges};
 use app\models\db\{Motion, User};
 use yii\helpers\Html;
@@ -20,7 +21,7 @@ $controller = $this->context;
 $consultation = $controller->consultation;
 
 $hasTags        = (count($consultation->tags) > 0);
-$isReplaced     = (count($entry->replacedByMotions) > 0);
+$isReplaced     = (count($entry->getReadableReplacedByMotions()) > 0);
 $motionStatuses = $consultation->getStatuses()->getStatusNames();
 $viewUrl        = UrlHelper::createMotionUrl($entry);
 if (User::haveOneOfPrivileges($consultation, \app\controllers\admin\MotionController::REQUIRED_PRIVILEGES, PrivilegeQueryContext::motion($entry))) {
@@ -35,7 +36,7 @@ if ($colMark) {
 }
 echo '<td>';
 if ($entry->getMyMotionType()->motionPrefix) {
-    echo Html::encode(trim($entry->getMyMotionType()->motionPrefix, ":-. \t\n\r\0\x0B"));
+    echo Html::encode(trim($entry->getMyMotionType()->motionPrefix, ":-. \t\n\r\0\x0B/"));
 } else {
     echo Yii::t('admin', 'list_motion_short');
 }
@@ -72,6 +73,14 @@ if ($entry->status === Motion::STATUS_COLLECTING_SUPPORTERS) {
 if ($entry->statusString !== null && $entry->statusString !== '') {
     echo ' <small>(' . Html::encode($entry->statusString) . ')</small>';
 }
+
+$todos = array_map(fn(AdminTodoItem $item): string => $item->action, AdminTodoItem::getTodosForIMotion($entry));
+if (count($todos) > 0) {
+    echo '<div class="todo">' . Yii::t('admin', 'list_todo') . ': ';
+    echo Html::encode(implode(', ', $todos));
+    echo '</div>';
+}
+
 echo '</td>';
 if ($colDate) {
     echo '<td class="dateCol">';

@@ -1,10 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\views\motion;
 
 use app\components\HashedStaticFileCache;
 use app\models\layoutHooks\Layout as LayoutHooks;
 use app\models\mergeAmendments\Init;
+use app\models\sectionTypes\TextSimple;
 use app\models\settings\{PrivilegeQueryContext, Privileges, VotingData, AntragsgruenApp};
 use app\components\latex\{Content, Exporter, Layout as LatexLayout};
 use app\components\Tools;
@@ -18,22 +21,37 @@ use yii\helpers\Html;
 
 class LayoutHelper
 {
+    private static function canSeeContactDetails(IMotion $imotion, ?User $user): bool
+    {
+        $privilege = $user && (
+            $user->hasPrivilege($imotion->getMyConsultation(), Privileges::PRIVILEGE_SCREENING, null) ||
+            $user->hasPrivilege($imotion->getMyConsultation(), Privileges::PRIVILEGE_CHANGE_PROPOSALS, null)
+        );
+
+        foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
+            $override = $plugin::canSeeContactDetails($imotion, $user);
+            if ($override !== null) {
+                $privilege = $override;
+            }
+        }
+
+        return $privilege;
+    }
+
     /**
      * @param ISupporter[] $initiators
      */
-    public static function formatInitiators(array $initiators, Consultation $consultation, bool $expanded = false, bool $adminMode = false): string
+    public static function formatInitiators(array $initiators, IMotion $imotion, bool $expanded = false, bool $adminMode = false): string
     {
         $inits = [];
         foreach ($initiators as $supp) {
             $name = $supp->getNameWithResolutionDate(true);
             $name = LayoutHooks::getMotionDetailsInitiatorName($name, $supp);
 
-            $admin = User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, null) ||
-                     User::havePrivilege($consultation, Privileges::PRIVILEGE_CHANGE_PROPOSALS, null);
-            if ($admin && ($supp->contactEmail || $supp->contactPhone)) {
+            if (self::canSeeContactDetails($imotion, User::getCurrentUser()) && ($supp->contactEmail || $supp->contactPhone)) {
                 if (!$expanded) {
-                    $name .= '<a href="#" class="contactShow"><span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span> ';
-                    $name .= \Yii::t('initiator', 'contact_show') . '</a>';
+                    $name .= '<button type="button" class="btn btn-link contactShow"><span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span> ';
+                    $name .= \Yii::t('initiator', 'contact_show') . '</button>';
                 }
 
                 $name .= '<div class="contactDetails' . ($expanded ? '' : ' hidden') . '">';
@@ -49,10 +67,10 @@ class LayoutHelper
                     $name .= Html::a(Html::encode($supp->contactEmail), 'mailto:' . $supp->contactEmail);
                     $user = $supp->getMyUser();
                     if ($user && $user->email === $supp->contactEmail && $user->emailConfirmed) {
-                        $name .= ' <span class="glyphicon glyphicon-ok-sign" style="color: gray;" ' .
+                        $name .= ' <span class="glyphicon glyphicon-ok-sign" style="color: grey;" ' .
                             'title="' . \Yii::t('initiator', 'email_confirmed') . '"></span>';
                     } else {
-                        $name .= ' <span class="glyphicon glyphicon-question-sign" style="color: gray;" ' .
+                        $name .= ' <span class="glyphicon glyphicon-question-sign" style="color: grey;" ' .
                             'title="' . \Yii::t('initiator', 'email_not_confirmed') . '"></span>';
                     }
                 }
@@ -93,7 +111,7 @@ class LayoutHelper
             if ($referenceMotion->id === $motion->id) {
                 $prefix = \Yii::t('amend', 'pprocedure_title_own');
             } else {
-                $prefix = \Yii::t('amend', 'pprocedure_title_other') . ' ' . $referenceMotion->titlePrefix;
+                $prefix = \Yii::t('amend', 'pprocedure_title_other') . ' ' . $referenceMotion->getFormattedTitlePrefix();
             }
             if (!$motion->isProposalPublic()) {
                 $prefix = '[ADMIN] ' . $prefix;
@@ -107,6 +125,14 @@ class LayoutHelper
             ];
         }
         return $out;
+    }
+
+    public static function showProposedProceduresInline(Motion $motion): bool
+    {
+        return $motion->getMyConsultation()->getSettings()->proposalProcedureInline
+               && count($motion->getVisibleAmendments()) === 0
+               && count($motion->comments) === 0
+               && $motion->isProposalPublic();
     }
 
     public static function addVotingResultsRow(VotingData $votingData, array &$rows): void
@@ -219,7 +245,7 @@ class LayoutHelper
         $content->logoData        = $motion->getMyConsultation()->getPdfLogoData();
         $intro                    = explode("\n", $motion->getMyMotionType()->getSettingsObj()->pdfIntroduction);
         $content->introductionBig = $intro[0];
-        if (in_array($motion->status, [Motion::STATUS_RESOLUTION_FINAL, Motion::STATUS_RESOLUTION_PRELIMINARY])) {
+        if ($motion->isResolution()) {
             $names                = $motion->getMyConsultation()->getStatuses()->getStatusNames();
             $content->titleRaw    = $motion->title;
             $content->titlePrefix = $names[$motion->status] . "\n";
@@ -227,7 +253,7 @@ class LayoutHelper
             $content->title       = $motion->getTitleWithIntro();
         } else {
             $content->titleRaw    = $motion->title;
-            $content->titlePrefix = $motion->titlePrefix;
+            $content->titlePrefix = $motion->getFormattedTitlePrefix();
             $content->titleLong   = $motion->getTitleWithPrefix();
             $content->title       = $motion->getTitleWithIntro();
         }
@@ -255,15 +281,32 @@ class LayoutHelper
 
         if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
             $ppSections = self::getVisibleProposedProcedureSections($motion, null);
+        }
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && !self::showProposedProceduresInline($motion)) {
+            /** @var array<array{title: string, section: ISectionType}> $ppSections */
             foreach ($ppSections as $ppSection) {
                 $ppSection['section']->setTitlePrefix($ppSection['title']);
-                $ppSection['section']->printAmendmentTeX(false, $content, $motion->getMyConsultation());
+                $ppSection['section']->printAmendmentTeX(false, $content);
             }
         }
 
         foreach ($motion->getSortedSections(true) as $section) {
             $isRight = $section->isLayoutRight();
-            $section->getSectionType()->printMotionTeX($isRight, $content, $motion->getMyConsultation());
+            $shownPp = false;
+            if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+                /** @var array{array{title: string, section: TextSimple}} $ppSections */
+                foreach ($ppSections as $ppSection) {
+                    if ($ppSection['section']->getSectionId() === $section->sectionId) {
+                        $ppSection['section']->setDefaultToOnlyDiff(false);
+                        $ppSection['section']->printAmendmentTex($isRight, $content);
+                        $shownPp = true;
+                    }
+                }
+            }
+            if (!$shownPp) {
+                $section->getSectionType()->printMotionTeX($isRight, $content, $motion->getMyConsultation());
+            }
         }
         if ($content->textRight) {
             // If there is a figure to the right, and the text of the main part is centered, then \newline\linebreak (BR) leads to
@@ -288,8 +331,6 @@ class LayoutHelper
 
     public static function printToPDF(IPdfWriter $pdf, IPDFLayout $pdfLayout, Motion $motion): void
     {
-        error_reporting(error_reporting() & ~E_DEPRECATED); // TCPDF ./. PHP 7.2
-
         $alternatveSection = $motion->getAlternativePdfSection();
         if ($alternatveSection) {
             $alternatveSection->getSectionType()->printMotionToPDF($pdfLayout, $pdf);
@@ -300,6 +341,10 @@ class LayoutHelper
 
         if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
             $ppSections = self::getVisibleProposedProcedureSections($motion, null);
+        }
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && !self::showProposedProceduresInline($motion)) {
+            /** @var array<array{title: string, section: ISectionType}> $ppSections */
             foreach ($ppSections as $ppSection) {
                 $ppSection['section']->setTitlePrefix($ppSection['title']);
                 $ppSection['section']->printAmendmentToPDF($pdfLayout, $pdf);
@@ -312,7 +357,20 @@ class LayoutHelper
             if ($section->getSettings()->type === ISectionType::TYPE_PDF_ATTACHMENT) {
                 $pdfAttachments[] = $section;
             } else {
-                $section->getSectionType()->printMotionToPDF($pdfLayout, $pdf);
+                $shownPp = false;
+                if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+                    /** @var array{array{title: string, section: TextSimple}} $ppSections */
+                    foreach ($ppSections as $ppSection) {
+                        if ($ppSection['section']->getSectionId() === $section->sectionId) {
+                            $ppSection['section']->setDefaultToOnlyDiff(false);
+                            $ppSection['section']->printAmendmentToPDF($pdfLayout, $pdf);
+                            $shownPp = true;
+                        }
+                    }
+                }
+                if (!$shownPp) {
+                    $section->getSectionType()->printMotionToPDF($pdfLayout, $pdf);
+                }
             }
         }
         foreach ($pdfAttachments as $section) {
@@ -399,7 +457,7 @@ class LayoutHelper
         if (count($list) > 50) {
             $str = '<div class="expandableList">';
 
-            $str .= '<strong>' . str_replace('%NUM%', count($list), $totalStr) . '</strong>';
+            $str .= '<strong>' . str_replace('%NUM%', (string)count($list), $totalStr) . '</strong>';
             $str .= '<button type="button" class="btn btn-link btnShowAll">';
             $str .= '<span class="glyphicon glyphicon-chevron-down" aria-hidden="true"></span>';
             $str .= \Yii::t('motion', 'likes_dislikes_showall');
@@ -441,9 +499,9 @@ class LayoutHelper
             }
         } elseif ($nonPublicSupportCount > 1) {
             if ($publicSupportCount > 0) {
-                $str .= str_replace('%x%', $nonPublicSupportCount, \Yii::t('motion', 'supporting_nonpublic_more_x'));
+                $str .= str_replace('%x%', (string)$nonPublicSupportCount, \Yii::t('motion', 'supporting_nonpublic_more_x'));
             } else {
-                $str .= str_replace('%x%', $nonPublicSupportCount, \Yii::t('motion', 'supporting_nonpublic_x'));
+                $str .= str_replace('%x%', (string)$nonPublicSupportCount, \Yii::t('motion', 'supporting_nonpublic_x'));
             }
         }
 
@@ -482,6 +540,10 @@ class LayoutHelper
         $str = '<section class="likes" aria-labelledby="likesTitle"><h2 class="green" id="likesTitle">' . \Yii::t('motion', 'likes_title') . '</h2>
     <div class="content">';
 
+        if (trim(\Yii::t('motion', 'likes_introduction')) !== '') {
+            $str .= '<div class="alert alert-info"><p>' . \Yii::t('motion', 'likes_introduction') . '</p></div>';
+        }
+
         if ($hasLike && count($likes) > 0) {
             if ($hasDislike) {
                 $str .= '<strong>' . \Yii::t('motion', 'likes') . ':</strong><br>';
@@ -499,7 +561,7 @@ class LayoutHelper
         if ($canSupport) {
             $str .= Html::beginForm();
 
-            $str .= '<div style="text-align: center; margin-bottom: 20px;">';
+            $str .= '<div class="likeDislikeHolder">';
             switch ($supportStatus) {
                 case ISupporter::ROLE_INITIATOR:
                     break;
@@ -510,6 +572,13 @@ class LayoutHelper
                     $str .= '</button>';
                     break;
                 default:
+                    if (!$user) {
+                        $str .= '<div class="likeNameHolder"><label class="input-group">';
+                        $str .= '<span class="input-group-addon">' . \Yii::t('motion', 'likes_name') . '</span>';
+                        $str .= '<input type="text" name="likeName" required class="form-control">';
+                        $str .= '</label></div>';
+                    }
+
                     if ($hasLike) {
                         $str .= '<button type="submit" name="motionLike" class="btn btn-success">';
                         $str .= '<span class="glyphicon glyphicon-thumbs-up" aria-hidden="true"></span> ' . \Yii::t('motion', 'like');
@@ -660,7 +729,7 @@ class LayoutHelper
         // data-append-hint's should be added as SUB elements, convert INS/DEL to inline colored text
         $html = preg_replace_callback('/<ins(?<attrs> [^>]*)?>(?<content>.*)<\/ins>/siuU', function ($matches) {
             $content = $matches['content'];
-            if (preg_match('/data\-append\-hint=["\'](?<append>[^"\']*)["\']/siu', $matches['attrs'], $matches2)) {
+            if (preg_match('/data-append-hint=["\'](?<append>[^"\']*)["\']/siu', $matches['attrs'], $matches2)) {
                 $content .= '<sub>' . $matches2['append'] . '</sub> ';
             }
 
@@ -668,7 +737,7 @@ class LayoutHelper
         }, $html);
         $html = preg_replace_callback('/<del(?<attrs> [^>]*)?>(?<content>.*)<\/del>/siuU', function ($matches) {
             $content = $matches['content'];
-            if (preg_match('/data\-append\-hint=["\'](?<append>[^"\']*)["\']/siu', $matches['attrs'], $matches2)) {
+            if (preg_match('/data-append-hint=["\'](?<append>[^"\']*)["\']/siu', $matches['attrs'], $matches2)) {
                 $content .= '<sub>' . $matches2['append'] . '</sub> ';
             }
 
@@ -682,7 +751,7 @@ class LayoutHelper
             '<\/\k<tag>>/siuU',
             function ($matches) {
                 $content = $matches['content'];
-                if (preg_match('/data\-append\-hint=["\'](?<append>[^"\']*)["\']/siu', $matches['attributes'], $matches2)) {
+                if (preg_match('/data-append-hint=["\'](?<append>[^"\']*)["\']/siu', $matches['attributes'], $matches2)) {
                     $content .= '<sub>' . $matches2['append'] . '</sub> ';
                 }
 
@@ -692,7 +761,7 @@ class LayoutHelper
         );
         // ice-ins class should be converted to a green DIV element (ice-ins will probably only be used on block elements)
         $html = preg_replace_callback(
-            '/<(?<tag>\w+) (?<attributes>[^>]*ice\-ins[^>]*)>' .
+            '/<(?<tag>\w+) (?<attributes>[^>]*ice-ins[^>]*)>' .
             '(?<content>.*)' .
             '<\/\k<tag>>/siuU',
             function ($matches) {
@@ -705,7 +774,7 @@ class LayoutHelper
         );
         // ice-del class should be converted to a red DIV element (ice-ins will probably only be used on block elements)
         $html = preg_replace_callback(
-            '/<(?<tag>\w+) (?<attributes>[^>]*ice\-del[^>]*)>' .
+            '/<(?<tag>\w+) (?<attributes>[^>]*ice-del[^>]*)>' .
             '(?<content>.*)' .
             '<\/\k<tag>>/siuU',
             function ($matches) {
@@ -777,7 +846,8 @@ class LayoutHelper
         $pdf->Ln(5);
         $amendmentsHtml = '<table border="1" cellpadding="5"><tr><td><h2>' . \Yii::t('export', 'amendments') . '</h2>';
         foreach ($form->motion->getVisibleAmendments(false, false) as $amendment) {
-            $amendmentsHtml .= '<div><strong>' . Html::encode($amendment->titlePrefix) . '</strong>: ' . Html::encode($amendment->getInitiatorsStr()) . '</div>';
+            $amendmentsHtml .= '<div><strong>' . Html::encode($amendment->getFormattedTitlePrefix()) . '</strong>: ' .
+                               Html::encode($amendment->getInitiatorsStr()) . '</div>';
         }
         if (count($form->motion->getVisibleAmendments(false, false)) === 0) {
             $amendmentsHtml .= '<em>' . \Yii::t('export', 'amendments_none') . '</em>';
@@ -825,6 +895,70 @@ class LayoutHelper
             } else {
                 $section->getSectionType()->printMotionToPDF($pdfLayout, $pdf);
             }
+        }
+    }
+
+    public static function printMotionToOdt(Motion $motion, \CatoTH\HTML2OpenDocument\Text $doc): void
+    {
+        $initiators = [];
+        foreach ($motion->motionSupporters as $supp) {
+            if ($supp->role === ISupporter::ROLE_INITIATOR) {
+                $initiators[] = $supp->getNameWithOrga();
+            }
+        }
+        if (count($initiators) === 1) {
+            $initiatorStr = \Yii::t('export', 'InitiatorSingle');
+        } else {
+            $initiatorStr = \Yii::t('export', 'InitiatorMulti');
+        }
+        $initiatorStr .= ': ' . implode(', ', $initiators);
+        $doc->addReplace('/\{\{ANTRAGSGRUEN:TITLE\}\}/siu', $motion->getTitleWithPrefix());
+        $doc->addReplace('/\{\{ANTRAGSGRUEN:INITIATORS\}\}/siu', $initiatorStr);
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && $motion->proposalStatus !== null && $motion->isProposalPublic()) {
+            $doc->addReplace('/\{\{ANTRAGSGRUEN:STATUS\}\}/siu', \Yii::t('export', 'proposed_procedure') . ': ' . strip_tags($motion->getFormattedProposalStatus(false)));
+        } else {
+            $doc->addReplace('/\{\{ANTRAGSGRUEN:STATUS\}\}/siu', '');
+        }
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+            $ppSections = self::getVisibleProposedProcedureSections($motion, null);
+        }
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && !self::showProposedProceduresInline($motion)) {
+            /** @var array<array{title: string, section: ISectionType}> $ppSections */
+            foreach ($ppSections as $ppSection) {
+                $ppSection['section']->setTitlePrefix($ppSection['title']);
+                $ppSection['section']->printAmendmentToODT($doc);
+            }
+        }
+
+        foreach ($motion->getSortedSections() as $section) {
+            $shownPp = false;
+            if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+                /** @var array{array{title: string, section: TextSimple}} $ppSections */
+                foreach ($ppSections as $ppSection) {
+                    if ($ppSection['section']->getSectionId() === $section->sectionId) {
+                        $ppSection['section']->setDefaultToOnlyDiff(false);
+                        $ppSection['section']->printAmendmentToOdt($doc);
+                        $shownPp = true;
+                    }
+                }
+            }
+            if (!$shownPp) {
+                $section->getSectionType()->printMotionToODT($doc);
+            }
+        }
+
+        $limitedSupporters = LimitedSupporterList::createFromIMotion($motion);
+        if (count($limitedSupporters->supporters) > 0) {
+            $doc->addHtmlTextBlock('<h2>' . Html::encode(\Yii::t('motion', 'supporters_heading')) . '</h2>', false);
+
+            $supps = [];
+            foreach ($limitedSupporters->supporters as $supp) {
+                $supps[] = $supp->getNameWithOrga();
+            }
+
+            $doc->addHtmlTextBlock('<p>' . Html::encode(implode('; ', $supps)) . $limitedSupporters->truncatedToString(';') . '</p>', false);
         }
     }
 }

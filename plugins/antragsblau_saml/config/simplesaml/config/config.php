@@ -538,7 +538,7 @@ $config = [
     'module.enable'                 => [
         'exampleauth' => false,
         'core'        => true,
-        'admin'       => env('SAMP2_ADMIN_PAGE', false),
+        'admin'       => env('SAML2_ADMIN_PAGE', false),
         'saml'        => true
     ],
 

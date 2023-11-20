@@ -166,13 +166,12 @@ foreach ($proposedAgenda as $proposedItem) {
                                     /** @var Amendment $item */
                                     echo HTMLTools::amendmentDiffTooltip($item, 'bottom');
                                 }
-                                echo Html::a(Html::encode($titlePre . $item->titlePrefix), $item->getLink())
+                                echo Html::a(Html::encode($titlePre . $item->getFormattedTitlePrefix()), $item->getLink())
                                 ?>
                             </td>
                             <td class="initiator">
                                 <?php
-                                $consultation = $item->getMyConsultation();
-                                echo LayoutHelper::formatInitiators($item->getInitiators(), $consultation, true, true);
+                                echo LayoutHelper::formatInitiators($item->getInitiators(), $item, true, true);
                                 ?>
                             </td>
                             <?php
@@ -194,7 +193,7 @@ foreach ($proposedAgenda as $proposedItem) {
                                     foreach ($item->getProposedProcedureTags() as $tag) {
                                         $tags[] = Html::encode($tag->title);
                                     }
-                                    echo '<small style="color: gray;">' . implode(', ', $tags) . '</small>';
+                                    echo '<small style="color: grey;">' . implode(', ', $tags) . '</small>';
                                 }
                                 ?></td>
                             <td class="visible">

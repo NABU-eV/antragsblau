@@ -3,14 +3,13 @@
 namespace app\controllers\admin;
 
 use app\components\updater\UpdateChecker;
-use app\models\settings\Privileges;
+use app\models\api\SpeechQueue as SpeechQueueApi;
+use app\models\settings\{Privileges, AntragsgruenApp, Stylesheet, Consultation as ConsultationSettings};
 use app\models\http\{BinaryFileResponse, HtmlErrorResponse, HtmlResponse, RedirectResponse, ResponseInterface};
-use app\models\settings\AntragsgruenApp;
-use app\components\{ConsultationAccessPassword, HTMLTools, Tools, UrlHelper};
+use app\components\{ConsultationAccessPassword, HTMLTools, LiveTools, Tools, UrlHelper};
 use app\models\db\{Consultation, ConsultationFile, ConsultationSettingsTag, ConsultationText, ISupporter, Site, SpeechQueue, User};
 use app\models\exceptions\FormError;
 use app\models\forms\{AntragsgruenUpdateModeForm, ConsultationCreateForm};
-use app\models\settings\Stylesheet;
 
 class IndexController extends AdminBase
 {
@@ -51,9 +50,8 @@ class IndexController extends AdminBase
             $model->setAttributes($data);
 
             $settingsInput = $post['settings'] ?? [];
-            $settings      = $model->getSettings();
+            $settings = $model->getSettings();
             $settings->saveConsultationForm($settingsInput, $post['settingsFields']);
-            $settings->setOrganisationsFromInput($post['organisations'] ?? []);
 
             if ($model->havePrivilege(Privileges::PRIVILEGE_SITE_ADMIN, null)) {
                 if ($this->isPostSet('pwdProtected') && $this->isPostSet('consultationPassword')) {
@@ -74,7 +72,7 @@ class IndexController extends AdminBase
 
             $model->setSettings($settings);
 
-            if (preg_match('/^[\w_-]+$/i', $data['urlPath']) && trim($data['urlPath']) !== 'rest') {
+            if (preg_match('/^[\w_-]+$/i', $data['urlPath']) && !in_array(trim($data['urlPath']), Consultation::BLOCKED_URL_PATHS, true)) {
                 $model->urlPath = $data['urlPath'];
             } else {
                 $this->getHttpSession()->setFlash('error', \Yii::t('admin', 'con_url_path_err'));
@@ -178,6 +176,14 @@ class IndexController extends AdminBase
                 $settings->speechListSubqueues = $subqueues;
             }
 
+            if ($settingsInput['showResolutionsCombined'] ?? false) {
+                $settings->startLayoutResolutions = ConsultationSettings::START_LAYOUT_RESOLUTIONS_ABOVE;
+            } elseif (intval($settingsInput['showResolutionsSeparateMode'] ?? 0) === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT) {
+                $settings->startLayoutResolutions = ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT;
+            } else {
+                $settings->startLayoutResolutions = ConsultationSettings::START_LAYOUT_RESOLUTIONS_SEPARATE;
+            }
+
             $settings->saveConsultationForm($settingsInput, $post['settingsFields']);
 
             if (isset($post['consultationLogo']) && $post['consultationLogo']) {
@@ -211,6 +217,12 @@ class IndexController extends AdminBase
                 $this->site->getSettings()->siteLayout = $siteSettings->siteLayout;
                 $this->layoutParams->setLayout($siteSettings->siteLayout);
 
+                $consultation->refresh();
+                foreach ($this->consultation->speechQueues as $speechQueue) {
+                    $apiDto = SpeechQueueApi::fromEntity($speechQueue);
+                    LiveTools::sendSpeechQueue($this->consultation, $apiDto);
+                }
+
                 $this->getHttpSession()->setFlash('success', \Yii::t('base', 'saved'));
             } else {
                 $this->getHttpSession()->setFlash('error', Tools::formatModelValidationErrors($consultation->getErrors()));
@@ -222,21 +234,42 @@ class IndexController extends AdminBase
 
     private function saveTags(Consultation $consultation): void
     {
-        $foundTags = [];
-        $newTags   = $this->getHttpRequest()->post('tags', []);
-        foreach ($newTags as $pos => $newTag) {
-            $tag = $consultation->getExistingTagOrCreate(ConsultationSettingsTag::TYPE_PUBLIC_TOPIC, $newTag, $pos);
-            if ($tag->position !== $pos) {
-                $tag->position = $pos;
-                $tag->save();
-            }
-            $foundTags[] = $tag->id;
+        $newTags = $this->getHttpRequest()->post('tags', []);
+
+        $existingTagsById = [];
+        foreach ($consultation->getSortedTags(ConsultationSettingsTag::TYPE_PUBLIC_TOPIC) as $tag) {
+            $existingTagsById[$tag->id] = $tag;
         }
 
-        foreach ($consultation->getSortedTags(ConsultationSettingsTag::TYPE_PUBLIC_TOPIC) as $tag) {
-            if (!in_array($tag->id, $foundTags)) {
-                $tag->deleteIncludeRelations();
+        $pos = 0;
+        for ($i = 0; $i < count($newTags['id'] ?? []); $i++) {
+            if (!isset($newTags['title'][$i])) {
+                throw new FormError('Inconsistent input');
             }
+            $title = trim($newTags['title'][$i]);
+            if ($newTags['id'][$i] === 'NEW') {
+                if ($title !== '') {
+                    $tag = new ConsultationSettingsTag();
+                    $tag->type = ConsultationSettingsTag::TYPE_PUBLIC_TOPIC;
+                    $tag->title = $title;
+                    $tag->consultationId = $this->consultation->id;
+                    $tag->position = $pos++;
+                    $tag->save();
+                }
+            } else {
+                $tag = $existingTagsById[intval($newTags['id'][$i])];
+                unset($existingTagsById[intval($newTags['id'][$i])]);
+
+                $tag->position = $pos++;
+                if ($title !== '') {
+                    $tag->title = $title;
+                }
+                $tag->save();
+            }
+        }
+
+        foreach ($existingTagsById as $tag) {
+            $tag->deleteIncludeRelations();
         }
 
         $consultation->refresh();
@@ -328,26 +361,25 @@ class IndexController extends AdminBase
 
     public function actionSiteconsultations(): ResponseInterface
     {
-        $site = $this->site;
-
         if (!User::havePrivilege($this->consultation, Privileges::PRIVILEGE_SITE_ADMIN, null)) {
             return new HtmlErrorResponse(403, \Yii::t('admin', 'no_access'));
         }
 
-        $form           = new ConsultationCreateForm($site);
+        $site = $this->site;
+        $form = new ConsultationCreateForm($site);
         $form->template = $this->consultation;
-        $post           = $this->getHttpRequest()->post();
+        $post = $this->getHttpRequest()->post();
 
         if ($this->isPostSet('createConsultation')) {
             $newcon = $post['newConsultation'];
             $form->setAttributes($newcon);
-            if (preg_match('/^[\w_-]+$/i', $newcon['urlPath'])) {
+            if (preg_match('/^[\w_-]+$/i', $newcon['urlPath']) && !in_array(trim($newcon['urlPath']), Consultation::BLOCKED_URL_PATHS, true)) {
                 $form->urlPath = $newcon['urlPath'];
             }
             $form->siteCreateWizard->setAttributes($post['SiteCreateForm']);
             if (isset($newcon['template'])) {
                 foreach ($this->site->consultations as $cons) {
-                    if ($cons->id == $post['newConsultation']['template']) {
+                    if ($cons->id === (int)$post['newConsultation']['template']) {
                         $form->template = $cons;
                     }
                 }
@@ -366,7 +398,7 @@ class IndexController extends AdminBase
             if (is_array($post['setStandard']) && count($post['setStandard']) == 1) {
                 $keys = array_keys($post['setStandard']);
                 foreach ($site->consultations as $consultation) {
-                    if ($consultation->id == $keys[0]) {
+                    if ($consultation->id === (int)$keys[0]) {
                         $site->currentConsultationId = $consultation->id;
                         if ($consultation->getSettings()->maintenanceMode) {
                             $site->status = Site::STATUS_INACTIVE;
@@ -380,7 +412,7 @@ class IndexController extends AdminBase
             }
             $this->site->refresh();
         }
-        if ($this->isPostSet('delete') && count($post['delete']) == 1) {
+        if ($this->isPostSet('delete') && count($post['delete']) === 1) {
             foreach ($site->consultations as $consultation) {
                 $keys = array_keys($post['delete']);
                 if ($consultation->id === $keys[0] && $site->currentConsultationId !== $consultation->id) {

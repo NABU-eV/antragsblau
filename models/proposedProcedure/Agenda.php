@@ -13,18 +13,14 @@ class Agenda
     public const FORMAT_HTML = 0;
     public const FORMAT_ODS  = 1;
 
-    public string $title;
-    public int $blockId;
-    public ?ConsultationAgendaItem $agendaItem;
-
     /** @var AgendaVoting[] */
     public array $votingBlocks = [];
 
-    public function __construct(int $blockId, string $title, ?ConsultationAgendaItem $agendaItem = null)
-    {
-        $this->blockId = $blockId;
-        $this->title = $title;
-        $this->agendaItem = $agendaItem;
+    public function __construct(
+        public int $blockId,
+        public string $title,
+        public ?ConsultationAgendaItem $agendaItem = null
+    ) {
     }
 
     public function addVotingBlock(VotingBlock $votingBlock, bool $includeInvisible, IMotionList $handledMotions): void
@@ -40,7 +36,7 @@ class Agenda
 
     public static function formatProposedAmendmentProcedure(IMotion $imotion, int $format): string
     {
-        if ($format === Agenda::FORMAT_HTML && $imotion->proposalStatus !== IMotion::STATUS_OBSOLETED_BY) {
+        if ($format === Agenda::FORMAT_HTML && $imotion->proposalStatus !== IMotion::STATUS_OBSOLETED_BY_AMENDMENT) {
             // Flushing an amendment's cache does not work when a modified version of an amendment is edited
             // that is replacing this one -> we disable the cache in this case
             $cached = $imotion->getCacheItem('procedure.formatted');
@@ -82,7 +78,7 @@ class Agenda
             }
         }
 
-        if ($format === Agenda::FORMAT_HTML && $imotion->proposalStatus !== Amendment::STATUS_OBSOLETED_BY) {
+        if ($format === Agenda::FORMAT_HTML && $imotion->proposalStatus !== Amendment::STATUS_OBSOLETED_BY_AMENDMENT) {
             $imotion->setCacheItem('procedure.formatted', $proposal);
         }
 

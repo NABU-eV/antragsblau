@@ -1,6 +1,9 @@
 <?php
 
 use app\plugins\antragsblau_saml\config\Env;
+use yii\web\NotFoundHttpException;
+use yii\web\ServerErrorHttpException;
+use yii\web\UnprocessableEntityHttpException;
 
 if (! function_exists('env')) {
     /**
@@ -12,14 +15,20 @@ if (! function_exists('env')) {
      */
     function env(string $key, $default = null)
     {
+
         if (class_exists('Dotenv\Dotenv')) {
-            $dotenv = Dotenv\Dotenv::create(Env::getRepository(), __DIR__);
-            $dotenv->load();
-            $dotenv->required('SAML2_ENTITY_ID');
-            $dotenv->required('SAML2_AUTO_SELECT_IDP')->isBoolean();
-            $dotenv->required('SAML2_IDP');
-            $dotenv->required('SAML2_IDP_SSO');
-            $dotenv->required('SAML2_IDP_x509_CERT');
+            try {
+                $dotenv = Dotenv\Dotenv::create(Env::getRepository(), __DIR__);
+                $dotenv->load();
+                $dotenv->required('SAML2_ENTITY_ID');
+                $dotenv->required('SAML2_AUTO_SELECT_IDP')->isBoolean();
+                $dotenv->required('SAML2_IDP');
+                $dotenv->required('SAML2_IDP_SSO');
+                $dotenv->required('SAML2_IDP_x509_CERT');
+            } catch (Dotenv\Exception\InvalidPathException $e) {
+                throw new UnprocessableEntityHttpException("Antragsbalu SAML Plugin: No .env file found. Please create a .env at [plugins/antragsblau_saml/.env]");
+            }
+
         } else {
             throw new \InvalidArgumentException('No Dotenv\Dotenv package found. Please run `composer require vlucas/phpdotenv`');
         }

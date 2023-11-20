@@ -2,15 +2,12 @@
 
 namespace app\models\db;
 
-use app\models\settings\IMotionStatusEngine;
-use app\models\settings\PrivilegeQueryContext;
+use app\models\settings\{IMotionStatusEngine, PrivilegeQueryContext, AntragsgruenApp};
 use app\components\{MotionSorter, UrlHelper};
 use app\models\amendmentNumbering\IAmendmentNumbering;
 use app\models\exceptions\{Internal, NotFound};
 use app\models\SearchResult;
-use app\models\settings\AntragsgruenApp;
-use yii\db\ActiveQuery;
-use yii\db\ActiveRecord;
+use yii\db\{ActiveQuery, ActiveRecord};
 
 /**
  * @property int $id
@@ -44,14 +41,16 @@ use yii\db\ActiveRecord;
  */
 class Consultation extends ActiveRecord
 {
-    const TITLE_SHORT_MAX_LEN = 45;
+    public const TITLE_SHORT_MAX_LEN = 45;
+
+    public const BLOCKED_URL_PATHS = ['login', 'logout', 'rest', 'token'];
 
     private static ?Consultation $current = null;
 
     /**
      * @throws Internal
      */
-    public static function setCurrent(Consultation $consultation)
+    public static function setCurrent(Consultation $consultation): void
     {
         if (self::$current) {
             throw new Internal('Current consultation already set');
@@ -85,10 +84,10 @@ class Consultation extends ActiveRecord
 
     const PRELOAD_ONLY_AMENDMENTS = 'amendments';
     const PRELOAD_ALL = 'all';
-    private string $preloadedAllMotionData = '';
+    private ?string $preloadedAllMotionData = null;
     private ?array $preloadedAmendmentIds  = null;
 
-    public function preloadAllMotionData(string $preloadType)
+    public function preloadAllMotionData(string $preloadType): void
     {
         $this->preloadedAllMotionData = $preloadType;
         foreach ($this->motions as $motion) {
@@ -98,7 +97,7 @@ class Consultation extends ActiveRecord
         }
     }
 
-    public function hasPreloadedMotionData(): string
+    public function hasPreloadedMotionData(): ?string
     {
         return $this->preloadedAllMotionData;
     }
@@ -137,12 +136,9 @@ class Consultation extends ActiveRecord
     /** @var Motion[]|null[] */
     private array $motionCache = [];
 
-    /**
-     * @param string|null|int $motionSlug
-     */
-    public function getMotion($motionSlug): ?Motion
+    public function getMotion(string|int|null $motionSlug): ?Motion
     {
-        if (is_null($motionSlug)) {
+        if (is_null($motionSlug) || $motionSlug === 0) {
             return null;
         }
         if (isset($this->motionCache[$motionSlug])) {
@@ -181,9 +177,6 @@ class Consultation extends ActiveRecord
     /** @var Amendment[]|null[] */
     private array $amendmentCache = [];
 
-    /**
-     * @param int $amendmentId
-     */
     public function getAmendment(int $amendmentId): ?Amendment
     {
         $amendmentId = IntVal($amendmentId);
@@ -207,7 +200,7 @@ class Consultation extends ActiveRecord
 
     public function isMyAmendment(int $amendmentId): bool
     {
-        if ($this->preloadedAllMotionData !== '') {
+        if ($this->preloadedAllMotionData) {
             return in_array($amendmentId, $this->preloadedAmendmentIds);
         } else {
             $amendment = $this->getAmendment($amendmentId);
@@ -514,6 +507,10 @@ class Consultation extends ActiveRecord
         $this->link('userGroups', ConsultationUserGroup::createDefaultGroupConsultationAdmin($this));
         $this->link('userGroups', ConsultationUserGroup::createDefaultGroupProposedProcedure($this));
         $this->link('userGroups', ConsultationUserGroup::createDefaultGroupParticipant($this));
+
+        foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
+            $plugin::createDefaultUserGroups($this);
+        }
     }
 
     /**
@@ -567,7 +564,7 @@ class Consultation extends ActiveRecord
      * @param ConsultationSettingsTag[] $tags
      * @throws NotFound
      */
-    public function getNextMotionPrefix(int $motionTypeId, array $tags): string
+    public function getNextMotionPrefix(int $motionTypeId, array $tags, ?string $forcePrefix = null): string
     {
         $max_rev = 0;
         $motionType = $this->getMotionType($motionTypeId);
@@ -580,10 +577,13 @@ class Consultation extends ActiveRecord
                 $prefix = $tag->getSettingsObj()->motionPrefix;
             }
         }
-
         if ($prefix === '' || $prefix === null) {
             $prefix = 'A';
         }
+        if ($forcePrefix) {
+            $prefix = $forcePrefix;
+        }
+
         $prefixLen = (int)grapheme_strlen($prefix);
         foreach ($this->motions as $motion) {
             if ($motion->status !== Motion::STATUS_DELETED) {

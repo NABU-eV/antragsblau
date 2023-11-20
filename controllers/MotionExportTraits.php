@@ -173,8 +173,7 @@ trait MotionExportTraits
 
         $imotionsFiltered = [];
         foreach ($imotions as $imotion) {
-            $resolutionStates = [Motion::STATUS_RESOLUTION_FINAL, Motion::STATUS_RESOLUTION_PRELIMINARY];
-            if ($resolutions && !in_array($imotion->status, $resolutionStates)) {
+            if ($resolutions && !$imotion->isResolution()) {
                 continue;
             }
             if ($texTemplate === null) {
@@ -298,7 +297,10 @@ trait MotionExportTraits
             return new HtmlResponse($this->render('view_not_visible', ['motion' => $motion, 'adminEdit' => false]));
         }
 
-        $odtData = $this->renderPartial('view_odt', ['motion' => $motion]);
+        $doc = $motion->getMyMotionType()->createOdtTextHandler();
+        LayoutHelper::printMotionToOdt($motion, $doc);
+        $odtData = $doc->finishAndGetDocument();
+
         return new BinaryFileResponse(
             BinaryFileResponse::TYPE_ODT,
             $odtData,

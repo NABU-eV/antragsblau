@@ -5,7 +5,6 @@ export class ConsultationSettings {
         this.element = $form[0] as HTMLFormElement;
         this.initUrlPath();
         this.initTags();
-        this.initOrganisations();
         this.initAdminMayEdit();
         this.initSingleMotionMode();
         this.initConPwd();
@@ -53,13 +52,37 @@ export class ConsultationSettings {
     }
 
     private initTags() {
-        const $tagList: any = this.$form.find("#tagsList select");
-        $tagList.selectize({create: true, plugins: ["remove_button"]})
-    }
+        const $form = this.$form.find('#tagsEditForm');
+        const $tagRowTemplate= $form.find(".newTagRowTemplate").remove();
+        const $tagList = $form.find('.editList');
 
-    private initOrganisations() {
-        const $tagList: any = this.$form.find("#organisationList select");
-        $tagList.selectize({create: true, plugins: ["remove_button"]})
+        Sortable.create(<HTMLElement>$tagList[0], {
+            handle: '.drag-handle',
+            animation: 150
+        });
+
+        $form.find('.adderRow button').on('click', () => {
+            const $newRow = $tagRowTemplate.clone();
+            $tagList.append($newRow);
+            window.setTimeout(() => {
+                $newRow.find("input").focus();
+            }, 100);
+        });
+
+        $tagList.on('click', '.remover', function(ev) {
+            let $li = $(this).parents("li").first();
+            ev.preventDefault();
+
+            if ($li.data('has-imotions')) {
+                bootbox.confirm($form.data('delete-warnings'), function (result) {
+                    if (result) {
+                        $li.remove();
+                    }
+                });
+            } else {
+                $li.remove();
+            }
+        });
     }
 
     private initConPwd() {

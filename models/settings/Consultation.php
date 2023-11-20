@@ -15,6 +15,10 @@ class Consultation implements \JsonSerializable
     public const START_LAYOUT_AGENDA_HIDE_AMEND = 5;
     public const START_LAYOUT_DISCUSSION_TAGS = 6;
 
+    public const START_LAYOUT_RESOLUTIONS_ABOVE = 0;
+    public const START_LAYOUT_RESOLUTIONS_SEPARATE = 1; // On separate page
+    public const START_LAYOUT_RESOLUTIONS_DEFAULT = 2; // On separate page - being the default page
+
     public const ROBOTS_NONE = 0;
     public const ROBOTS_ONLY_HOME = 1;
     public const ROBOTS_ALL = 2;
@@ -29,7 +33,7 @@ class Consultation implements \JsonSerializable
     public const DATE_FORMAT_MDY_SLASH = 'mdy-slash'; // 01/13/2022
     public const DATE_FORMAT_YMD_DASH = 'ymd-dash'; // 2022-01-13
 
-        // SETTINGS WITH TEST CASES
+    // SETTINGS WITH TEST CASES
 
     public bool $maintenanceMode = false;
     public bool $screeningMotions = false;
@@ -44,6 +48,7 @@ class Consultation implements \JsonSerializable
     public bool $editorialAmendments = true;
     public bool $globalAlternatives = true;
     public bool $proposalProcedurePage = false;
+    public bool $proposalProcedureInline = false;
     public bool $collectingPage = false;
     public bool $sidebarNewMotions = true;
     public bool $forceLogin = false;
@@ -61,7 +66,7 @@ class Consultation implements \JsonSerializable
     public ?string $accessPwd = null;
     public ?string $translationService = null;
 
-    /** @var null|string[] */
+    /** @var null|ConsultationUserOrganisation[] */
     public ?array $organisations = null;
     /** @var null|string[] */
     public ?array $speechListSubqueues = [];
@@ -75,10 +80,12 @@ class Consultation implements \JsonSerializable
     public bool $adminListFilerByMotion = false; // If true: the admin list is filtered by motion. To be activated manually.
     public bool $showIMotionEditDate = false;
     public bool $ppEditableAfterPublication = true;
+    public bool $homepageTagsList = true;
 
     public int $lineLength = 80;
     public int $motionTitlePrefixNumMaxLen = 1;
     public int $startLayoutType = 0;
+    public int $startLayoutResolutions = 0;
     public int $robotsPolicy = 1;
     public int $motiondataMode = 0;
     public int $discourseCategoryId = 0;
@@ -94,6 +101,15 @@ class Consultation implements \JsonSerializable
     public bool $documentPage = false;
     public bool $votingPage = false;
     public bool $speechPage = false;
+
+
+    public function setOrganisations(?array $orgas): void
+    {
+        $this->organisations = array_map(
+            fn(string|array $orga): ConsultationUserOrganisation => ConsultationUserOrganisation::fromJson($orga),
+            $orgas ?? []
+        );
+    }
 
     /**
      * @return string[]
@@ -139,37 +155,21 @@ class Consultation implements \JsonSerializable
     public static function getRobotPolicies(): array
     {
         return [
-            self::ROBOTS_NONE      => \Yii::t('structure', 'robots_policy_none'),
+            self::ROBOTS_NONE => \Yii::t('structure', 'robots_policy_none'),
             self::ROBOTS_ONLY_HOME => \Yii::t('structure', 'robots_policy_only_home'),
-            self::ROBOTS_ALL       => \Yii::t('structure', 'robots_policy_all'),
+            self::ROBOTS_ALL => \Yii::t('structure', 'robots_policy_all'),
         ];
     }
 
-    public function setOrganisationsFromInput(?array $organisationField): void
+    public function getStartLayoutView(): ?string
     {
-        if ($organisationField) {
-            $this->organisations = $organisationField;
-        } else {
-            $this->organisations = null;
-        }
-    }
-
-    public function getStartLayoutView(): string
-    {
-        switch ($this->startLayoutType) {
-            case Consultation::START_LAYOUT_STD:
-                return 'index_layout_std';
-            case Consultation::START_LAYOUT_TAGS:
-                return 'index_layout_tags';
-            case Consultation::START_LAYOUT_AGENDA_LONG:
-            case Consultation::START_LAYOUT_AGENDA_HIDE_AMEND:
-            case Consultation::START_LAYOUT_AGENDA:
-                return 'index_layout_agenda';
-            case Consultation::START_LAYOUT_DISCUSSION_TAGS:
-                return 'index_layout_discussion_tags';
-            default:
-                throw new Internal('Unknown layout: ' . $this->startLayoutType);
-        }
+        return match ($this->startLayoutType) {
+            Consultation::START_LAYOUT_STD => 'index_layout_std',
+            Consultation::START_LAYOUT_TAGS => 'index_layout_tags',
+            Consultation::START_LAYOUT_AGENDA_LONG, Consultation::START_LAYOUT_AGENDA_HIDE_AMEND, Consultation::START_LAYOUT_AGENDA => 'index_layout_agenda',
+            Consultation::START_LAYOUT_DISCUSSION_TAGS => 'index_layout_discussion_tags',
+            default => throw new Internal('Unknown layout: ' . $this->startLayoutType),
+        };
     }
 
     public function getConsultationSidebar(): ?string
@@ -178,7 +178,7 @@ class Consultation implements \JsonSerializable
     }
 
     /**
-     * @return null|string|Layout
+     * @return class-string<Layout>|null
      */
     public function getSpecializedLayoutClass(): ?string
     {

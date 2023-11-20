@@ -8,8 +8,8 @@
     },
     "scripts": {
         "typings": "node_modules/.bin/typings",
-        "test:acceptance": "vendor/bin/codecept run acceptance",
-        "test:unit": "vendor/bin/codecept run unit",
+        "test:acceptance": "vendor/bin/codecept run Acceptance",
+        "test:unit": "vendor/bin/codecept run Unit",
         "watch": "gulp watch",
         "build": "gulp",
         "lint": "eslint --no-fix web/typescript/",
@@ -44,12 +44,13 @@
         "pa11y": "^5.3.1",
         "postcss": "^8.4.5",
         "sass": "^1.54.9",
-        "typescript": "^4.9.4"
+        "typescript": "^5.0.4"
     },
     "directories": {
         "bin": "./bin/"
     },
     "dependencies": {
+        "@selectize/selectize": "^0.15.2",
         "bootbox": "^5.5.2",
         "bootstrap": "^3.4.1",
         "bootstrap-toggle": "^2.2.2",

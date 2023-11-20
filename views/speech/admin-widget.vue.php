@@ -233,6 +233,7 @@ $pollUrl          = UrlHelper::createUrl(['/speech/get-queue-admin', 'queueId' =
                 queue: null,
                 showPreviousList: false,
                 pollingId: null,
+                liveConnected: false,
                 timerId: null,
                 dragging: false,
                 changedSettings: {
@@ -438,7 +439,7 @@ $pollUrl          = UrlHelper::createUrl(['/speech/get-queue-admin', 'queueId' =
                     is_open_poo: (this.queue.settings.is_open_poo ? 1 : 0),
                     prefer_nonspeaker: (this.queue.settings.prefer_nonspeaker ? 1 : 0),
                     allow_custom_names: (this.queue.settings.allow_custom_names ? 1 : 0),
-                    speaking_time: (this.hasSpeakingTime ? parseInt(this.speakingTime, 10) : null),
+                    speaking_time: (this.hasSpeakingTime ? (this.speakingTime > 0 ? parseInt(this.speakingTime, 10) : 60) : null),
                     _csrf: this.csrf,
                 }, function (data) {
                     widget.queue = data['queue'];
@@ -482,13 +483,21 @@ $pollUrl          = UrlHelper::createUrl(['/speech/get-queue-admin', 'queueId' =
 
                 this.remainingSpeakingTime = this.queue.settings.speaking_time - secondsPassed;
             },
+            setData: function (data) {
+                this.queue = data;
+                this.recalcTimeOffset(new Date(data['current_time']));
+                this.recalcRemainingTime();
+            },
             reloadData: function () {
                 const widget = this;
-                $.get(pollUrl.replace(/QUEUEID/, widget.queue.id), function (data) {
-                    widget.queue = data;
-                    widget.recalcTimeOffset(new Date(data['current_time']));
-                    widget.recalcRemainingTime();
-                }).catch(function(err) {
+                if (widget.liveConnected) {
+                    return;
+                }
+
+                $.get(
+                    pollUrl.replace(/QUEUEID/, widget.queue.id),
+                    this.setData.bind(this)
+                ).catch(function(err) {
                     console.error("Could not load speech queue data from backend", err);
                 });
             },
@@ -510,6 +519,17 @@ $pollUrl          = UrlHelper::createUrl(['/speech/get-queue-admin', 'queueId' =
                 this.timerId = window.setInterval(function () {
                     widget.recalcRemainingTime();
                 }, 100);
+
+                if (window['ANTRAGSGRUEN_LIVE_EVENTS'] !== undefined) {
+                    window['ANTRAGSGRUEN_LIVE_EVENTS'].registerListener('admin', 'speech', (connectionEvent, speechEvent) => {
+                        if (connectionEvent !== null) {
+                            widget.liveConnected = connectionEvent;
+                        }
+                        if (speechEvent !== null) {
+                            this.setData(speechEvent);
+                        }
+                    });
+                }
             }
         },
         beforeUnmount() {

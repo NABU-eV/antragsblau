@@ -1,10 +1,8 @@
 <?php
 
-use app\models\settings\AntragsgruenApp;
-use app\models\settings\PrivilegeQueryContext;
-use app\models\settings\Privileges;
-use app\components\{Tools, UrlHelper};
-use app\models\db\{Amendment, AmendmentSection, ConsultationAgendaItem, ConsultationSettingsTag, User};
+use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
+use app\components\{MotionSorter, Tools, UrlHelper};
+use app\models\db\{Amendment, AmendmentSection, ConsultationAgendaItem, ConsultationSettingsTag, Motion, User};
 use yii\helpers\Html;
 
 /**
@@ -65,7 +63,7 @@ echo $controller->showErrors();
 
 if ($amendment->isInScreeningProcess() && User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, PrivilegeQueryContext::amendment($amendment))) {
     echo Html::beginForm('', 'post', ['class' => 'content', 'id' => 'amendmentScreenForm']);
-    $newRev = $amendment->titlePrefix;
+    $newRev = $amendment->titlePrefix ?? '';
     if ($newRev === '') {
         $newRev = Amendment::getNewNumberForAmendment($amendment);
     }
@@ -138,10 +136,41 @@ if (count($consultation->agendaItems) > 0) {
             ?>
         </div>
         <div class="rightColumn">
-            <?php
-            $options = ['class' => 'form-control', 'id' => 'amendmentStatusString', 'placeholder' => '...'];
-            echo Html::textInput('amendment[statusString]', $amendment->statusString, $options);
-            ?>
+            <div class="amendmentStatusString">
+                <?php
+                $options = ['class' => 'form-control', 'id' => 'amendmentStatusString', 'placeholder' => '...'];
+                echo Html::textInput('amendment[statusString]', $amendment->statusString, $options);
+                ?>
+            </div>
+            <div class="amendmentStatusMotion hidden">
+                <?php
+                $options = ['class' => 'stdDropdown', 'id' => 'amendmentStatusMotion', 'placeholder' => '...'];
+                $items = ['' => '...'];
+                $motions = $consultation->motions;
+                usort($motions, fn(Motion $motion1, Motion $motion2): int => MotionSorter::getSortedMotionsSort($motion1->titlePrefix, $motion2->titlePrefix));
+                $hasVersions = count(array_filter($motions, fn(Motion $mot): bool => $mot->version !== Motion::VERSION_DEFAULT)) > 0;
+                foreach ($motions as $mot) {
+                    $items[$mot->id] = $mot->getTitleWithPrefix();
+                    if ($hasVersions) {
+                        $items[$mot->id] .= ' (' . Yii::t('motion', 'version') . ' ' . $mot->version . ')';
+                    }
+                }
+                echo Html::dropDownList('amendment[statusStringMotion]', $amendment->statusString, $items, $options);
+                ?>
+            </div>
+            <div class="amendmentStatusAmendment hidden">
+                <?php
+                $options = ['class' => 'stdDropdown', 'id' => 'amendmentStatusAmendment', 'placeholder' => '...'];
+                $items = ['' => '...'];
+                foreach (MotionSorter::getSortedIMotionsFlat($consultation, $consultation->motions) as $mot) {
+                    /** @var Motion $mot */
+                    foreach ($mot->amendments as $amend) {
+                        $items[$amend->id] = $amend->getTitleWithPrefix();
+                    }
+                }
+                echo Html::dropDownList('amendment[statusStringAmendment]', $amendment->statusString, $items, $options);
+                ?>
+            </div>
         </div>
     </div>
 

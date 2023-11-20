@@ -41,6 +41,8 @@ rm composer.phar composer.lock codeception.yml phpci.yml .gitignore .travis.yml 
 rm package-lock.json composer.json
 rm config/TEST_DOMAIN
 rm assets/phpstan-helper.php
+rm -R assets/OpenOffice-Template-ods
+rm -R assets/OpenOffice-Template-odt
 mv web/index-production.php web/index.php
 rm docs/create-dist.sh docs/create-update.php
 
@@ -85,6 +87,7 @@ rm migrations/m16*
 rm migrations/m17*
 rm migrations/m18*
 rm migrations/m19*
+rm migrations/m20*
 find . -name ".DS_Store" -exec rm {} \;
 find . -name ".git" -exec rm -rf {} \;
 find . -name ".github" -exec rm -rf {} \;
@@ -99,6 +102,10 @@ find . -name ".scrutinizer.yml" -exec rm {} \;
 find . -name ".php_cs.dist" -exec rm {} \;
 find . -name ".phpstorm.meta.php" -exec rm {} \;
 find . -name "phpunit.xml" -exec rm {} \;
+find . -name ".eslintrc.js" -exec rm {} \;
+find . -name ".phpstan.neon.dist" -exec rm {} \;
+find . -name ".phpcs.xml.dist" -exec rm {} \;
+find . -name ".phpcs.xml" -exec rm {} \;
 rm runtime/logs/app.log
 rm ./vendor/bin/json5
 rm vendor/colinodell/json5/bin/json5
@@ -108,7 +115,6 @@ touch config/INSTALLING
 cp config/.htaccess runtime/
 cp config/.htaccess plugins/
 cp config/.htaccess vendor/
-cp config/.htaccess node_modules/
 sed -i -e 's/repository\-source/dist/g' config/defines.php
 rm config/defines.php-e
 rm phpstan.use-baseline.neon

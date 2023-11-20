@@ -93,10 +93,10 @@ class ParagraphMerger
 
             while ($wordNo >= 0) {
                 $str = explode("###DEL_", $this->diffs[$locAmendNo]->diff[$wordNo]->diff);
-                if (count($str) > 1 && strpos($str[count($str) - 1], 'START') === 0) {
+                if (count($str) > 1 && str_starts_with($str[count($str) - 1], 'START')) {
                     return $this->diffs[$locAmendNo]->diff[$wordNo]->amendmentId;
                 }
-                if (count($str) > 1 && strpos($str[count($str) - 1], 'END') === 0) {
+                if (count($str) > 1 && str_starts_with($str[count($str) - 1], 'END')) {
                     return null;
                 }
                 $wordNo--;
@@ -637,12 +637,12 @@ class ParagraphMerger
                     '</button>';
             $out .= '<p class="collidingParagraphHead"><strong>' .
                     \Yii::t('amend', 'merge_colliding') . ': ' .
-                    Html::a(Html::encode($amendment->titlePrefix), $amendmentUrl) .
+                    Html::a(Html::encode($amendment->getFormattedTitlePrefix()), $amendmentUrl) .
                     '</strong></p>';
             $out .= '<div class="alert alert-danger"><p>' . \Yii::t('amend', 'merge_colliding_hint') . '</p></div>';
         } else {
             $out .= '<p class="collidingParagraphHead"><strong>' .
-                    \Yii::t('amend', 'merge_colliding') . ': ' . Html::encode($amendment->titlePrefix) .
+                    \Yii::t('amend', 'merge_colliding') . ': ' . Html::encode($amendment->getFormattedTitlePrefix()) .
                     '</strong></p>';
         }
         $out .= DiffRenderer::renderForInlineDiff($paragraphText, $amendmentsById);

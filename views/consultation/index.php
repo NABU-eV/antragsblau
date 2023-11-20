@@ -1,8 +1,8 @@
 <?php
 
 use app\models\db\{Amendment, AmendmentSupporter, Motion, MotionSupporter, User};
-use app\components\UrlHelper;
-use app\models\settings\Privileges;
+use app\components\{MotionSorter, UrlHelper};
+use app\models\settings\{Privileges, Consultation as ConsultationSettings};
 use yii\helpers\Html;
 
 /**
@@ -26,7 +26,6 @@ if ($contentAdmin) {
     $layout->loadCKEditor();
     $layout->loadDatepicker();
 }
-
 
 echo '<h1>' . Html::encode($consultation->title) . '</h1>';
 
@@ -141,10 +140,23 @@ if ($consultation->getSettings()->hasSpeechLists) {
 echo $this->render('@app/views/voting/_index_voting', ['assignedToMotion' => null]);
 
 
-if (count($consultation->motionTypes) > 0) {
+$resolutionMode = $consultation->getSettings()->startLayoutResolutions;
+list($imotions, $resolutions) = MotionSorter::getIMotionsAndResolutions($consultation->motions);
+if (count($resolutions) > 0 && $resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_ABOVE) {
+    echo $this->render('_index_resolutions', ['consultation' => $consultation, 'resolutions' => $resolutions]);
+}
+
+if (count($consultation->motionTypes) > 0 && $consultation->getSettings()->getStartLayoutView()) {
+    if ($resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT) {
+        $toShowImotions = $resolutions;
+    } else {
+        $toShowImotions = $imotions;
+    }
     echo $this->render($consultation->getSettings()->getStartLayoutView(), [
         'consultation' => $consultation,
         'layout' => $layout,
         'admin' => $contentAdmin,
+        'imotions' => $toShowImotions,
+        'isResolutionList' => ($resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT),
     ]);
 }

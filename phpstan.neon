@@ -4,8 +4,8 @@
 #  - phpstan-baseline.neon
 
 parameters:
+    phpVersion: 80000
     level: 7
-    phpVersion: 70400
     reportUnmatchedIgnoredErrors: false
     checkMissingIterableValueType: false # Issues because Yii's ActiveRecords are recognized as Iterables
     scanDirectories:
