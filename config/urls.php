@@ -35,12 +35,12 @@ $userPaths            = 'login|logout|token|confirmregistration|emailblocklist|r
 $adminMotionPaths     = 'get-amendment-rewrite-collisions|move|move-check';
 $adminTypePaths       = 'type|typecreate';
 $adminMotionListPaths = 'index|motion-excellist|motion-odslist|motion-pdfziplist';
-$adminMotionListPaths .= '|motion-odtziplist|motion-odslistall|motion-odtall|motion-openslides';
-$adminAmendmentPaths  = 'excellist|odslist|odslist-short|pdflist|pdfziplist|odtziplist|openslides';
+$adminMotionListPaths .= '|motion-odtziplist|motion-odslistall|motion-odtall|motion-openslides|motion-comments-xlsx';
+$adminAmendmentPaths  = 'excellist|odslist|odslist-short|xlsx-list|pdflist|pdfziplist|odtziplist|openslides';
 $adminUserPaths       = 'save|poll|add-single-init|add-single|add-multiple-ww|add-multiple-email|search-groups';
 $adminPaths           = 'consultation|appearance|consultationextended|translation|translation-motion-type|siteaccess|siteconsultations|openslidesusers';
 $adminPaths           .= '|theming|files|proposed-procedure|ods-proposed-procedure|check-updates|goto-update';
-$adminPpPaths         = 'index-ajax|ods|save-motion-comment|save-amendment-comment|save-motion-visible|save-amendment-visible|save-responsibility';
+$adminPpPaths         = 'index-ajax|ods|save-motion-comment|save-amendment-comment|save-motion-visible|save-amendment-visible|save-responsibility|save-tags';
 
 $urlRules = [
     $domadmin                                                     => 'admin/index',
@@ -62,6 +62,7 @@ $urlRules = [
     $domadmin . 'admins'                                          => 'admin/index/admins',
     $domadmin . 'consultations'                                   => 'admin/index/consultations',
 
+    $domv . '<_a:(' . $userPaths . ')>'       => 'user/<_a>',
     $dom . '<_a:(' . $userPaths . ')>'        => 'user/<_a>',
     $dom . 'checkemail'                       => 'user/ajaxIsEmailRegistered',
     $domv . 'consultationaccesserror'         => 'user/consultationaccesserror',
