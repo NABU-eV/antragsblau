@@ -35,6 +35,16 @@ class AmendmentController extends AdminBase
         return new BinaryFileResponse(BinaryFileResponse::TYPE_ODS, $ods, true,'amendments');
     }
 
+    public function actionXlsxList(bool $textCombined = false, int $withdrawn = 0): BinaryFileResponse
+    {
+        $ods = $this->renderPartial('xlsx_list', [
+            'motions'      => $this->consultation->getVisibleIMotionsSorted($withdrawn === 1),
+            'textCombined' => $textCombined,
+            'withdrawn'    => ($withdrawn === 1),
+        ]);
+        return new BinaryFileResponse(BinaryFileResponse::TYPE_XLSX, $ods, true,'amendments');
+    }
+
     public function actionOdslistShort(int $textCombined = 0, int $withdrawn = 0, int $maxLen = 2000): BinaryFileResponse
     {
         $ods = $this->renderPartial('ods_list_short', [
@@ -206,7 +216,7 @@ class AmendmentController extends AdminBase
             if (!isset($post['edittext'])) {
                 unset($post['sections']);
             }
-            $form = new AmendmentEditForm($amendment->getMyMotion(), $amendment->getMyAgendaItem(), $amendment);
+            $form = new AmendmentEditForm($amendment->getMyMotion(), $amendment->getMyAgendaItem(), $amendment, null, null);
             $form->setAdminMode(true);
             $form->setAttributes($post, $_FILES);
 
@@ -297,7 +307,7 @@ class AmendmentController extends AdminBase
             $this->getHttpSession()->setFlash('success', \Yii::t('admin', 'saved'));
         }
 
-        $form = new AmendmentEditForm($amendment->getMyMotion(),$amendment->getMyAgendaItem(), $amendment);
+        $form = new AmendmentEditForm($amendment->getMyMotion(),$amendment->getMyAgendaItem(), $amendment, null, null);
         $form->setAdminMode(true);
 
         return new HtmlResponse($this->render('update', ['amendment' => $amendment, 'form' => $form]));

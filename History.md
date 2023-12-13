@@ -1,6 +1,26 @@
 # Version history
 
-### Version 4.13.0 (2023-10-29)
+### Version 4.13.1 (2023-12-09)
+
+- As admin, is now possible to edit the list of internal (proposed procedure) tags, just like the public ones.
+- Proposed procedure tags can now be assigned directly in the procedure overview page.
+- As admin, it is possible to deactivate private notes on the site.
+- If amendments are set up to be restricted to one paragraph, then each paragraph in the motion now shows a direct link to the amendment creation page, with that paragraph pre-selected.
+- It can be set up so that external links and PDF-links will be opened in new, blank browser tabs/windows.
+- Security: Consultation admins could grant privileges to other consultations within the same site.
+- The backlinkt on the "my account" page leads to the consultation where the user was coming from.
+- Admins can now download Excel/XLSX-exports of amendments and the comments to motions.
+- Motions and amendment in the "My motions" section of the home page are now sorted by prefix.
+- Bugfix: When resolutions were shown on a separate page, title prefixes / motion signatures were shown.
+- Bugfix: Motion history might also show changes of invisible motions.
+- Bugfix: Comparing motion versions did not show changes in titles.
+- Bugfix: If a motion section was removed from a motion type that already had motions, then amendments to this motion could not be merged individually anymore.
+- Bugfix: If a voting block was deleted with motions/amendments assigned to it, then these motions/amendments could not be assigned to new voting blocks anymore.
+- Bugfix: If a motion had an empty optional section, amendments adding text to that section were breaking the motion view.
+- Bugfix: Copying a motion with amendments amending another amendment to another consultation was breaking the assignments between the amendments.
+- Bugfix: The first line of an amendment was determined incorrectly if the first change was in the second or later amendable motion section.
+
+## Version 4.13.0 (2023-10-29)
 
 - WARNING: if you are using a PHP 7.4 or older, then update to PHP 8.0 or newer first before installing this update!
 - For larger consultations using the Speaking Lists, there is now a separate live server component, allowing real-time updates of the speaking lists at reduced load on the server. As it runs on Java, it is not compatible with "traditional" webhosting. Sites running on antragsgruen.de / discuss.green are getting the real-time update feature automatically.

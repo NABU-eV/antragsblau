@@ -3,7 +3,7 @@
 namespace app\views\consultation;
 
 use app\models\IMotionList;
-use app\components\{MotionSorter, Tools, UrlHelper};
+use app\components\{HTMLTools, MotionSorter, Tools, UrlHelper};
 use app\models\db\{Amendment,
     AmendmentComment,
     Consultation,
@@ -29,7 +29,7 @@ class LayoutHelper
         $return    .= '<a href="' . Html::encode($motionUrl) . '" class="motionLink' . $motion->id . '">';
 
         $return .= '<span class="glyphicon glyphicon-file motionIcon" aria-hidden="true"></span>';
-        if (!$consultation->getSettings()->hideTitlePrefix && trim($motion->getFormattedTitlePrefix()) !== '') {
+        if ($motion->showTitlePrefix()) {
             $return .= '<span class="motionPrefix">' . Html::encode($motion->getFormattedTitlePrefix()) . '</span>';
         }
 
@@ -41,7 +41,7 @@ class LayoutHelper
         $hasPDF = ($motion->getMyMotionType()->getPDFLayoutClass() !== null);
         if ($hasPDF && $motion->status !== Motion::STATUS_MOVED) {
             $html   = '<span class="glyphicon glyphicon-download-alt" aria-hidden="true"></span> PDF';
-            $return .= Html::a($html, UrlHelper::createMotionUrl($motion, 'pdf'), ['class' => 'pdfLink']);
+            $return .= HtmlTools::createExternalLink($html, UrlHelper::createMotionUrl($motion, 'pdf'), ['class' => 'pdfLink']);
         }
         $return .= "</p>\n";
 
@@ -86,7 +86,7 @@ class LayoutHelper
         $privateAmendmentComments = AmendmentComment::getAllForUserAndConsultationByMotion($consultation, User::getCurrentUser(), AmendmentComment::STATUS_PRIVATE);
         $return .= LayoutHelper::getPrivateCommentIndicator($amendment, [], $privateAmendmentComments);
 
-        $title  = (trim($amendment->getFormattedTitlePrefix()) === '' ? \Yii::t('amend', 'amendment') : $amendment->getFormattedTitlePrefix());
+        $title  = ($amendment->showTitlePrefix() ? $amendment->getFormattedTitlePrefix() : \Yii::t('amend', 'amendment'));
         $return .= '<a href="' . Html::encode(UrlHelper::createAmendmentUrl($amendment)) . '" ' .
                    'class="amendmentTitle amendment' . $amendment->id . '">' . Html::encode($title) . '</a>';
 
@@ -114,14 +114,13 @@ class LayoutHelper
 
     private static function getStatuteAmendmentLineContent(Amendment $amendment, Consultation $consultation): string
     {
-        $return = '';
-        $return .= '<p class="title">' . "\n";
+        $return = '<p class="title">' . "\n";
 
         $amendmentUrl = UrlHelper::createAmendmentUrl($amendment);
         $return    .= '<a href="' . Html::encode($amendmentUrl) . '" class="amendmentLink' . $amendment->id . '">';
 
         $return .= '<span class="glyphicon glyphicon-file motionIcon" aria-hidden="true"></span>';
-        if (!$consultation->getSettings()->hideTitlePrefix && trim($amendment->getFormattedTitlePrefix()) !== '') {
+        if ($amendment->showTitlePrefix()) {
             $return .= '<span class="motionPrefix">' . Html::encode($amendment->getFormattedTitlePrefix()) . '</span>';
         }
 
@@ -133,7 +132,7 @@ class LayoutHelper
         $hasPDF = ($amendment->getMyMotionType()->getPDFLayoutClass() !== null);
         if ($hasPDF && $amendment->status !== Motion::STATUS_MOVED) {
             $html   = '<span class="glyphicon glyphicon-download-alt" aria-hidden="true"></span> PDF';
-            $return .= Html::a($html, UrlHelper::createAmendmentUrl($amendment, 'pdf'), ['class' => 'pdfLink']);
+            $return .= HtmlTools::createExternalLink($html, UrlHelper::createAmendmentUrl($amendment, 'pdf'), ['class' => 'pdfLink']);
         }
         $return .= "</p>\n";
 

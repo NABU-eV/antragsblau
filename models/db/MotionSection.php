@@ -290,6 +290,62 @@ class MotionSection extends IMotionSection
     private ?array $paragraphObjectCacheWithoutLines = null;
 
     /**
+     * @param MotionSectionParagraph[] $paragraphs
+     * @return MotionSectionParagraph[]
+     */
+    private function ensureAtLeastOneParagraph(array $paragraphs, bool $includeAmendment): array
+    {
+        if (count($paragraphs) === 0) {
+            $para = new MotionSectionParagraph();
+            $para->paragraphNo = 0;
+            $para->paragraphNoWithoutSplitLists = 0;
+            $para->lines = [];
+            $para->origStr = '';
+            if ($includeAmendment) {
+                $para->amendmentSections = [];
+            }
+            $paragraphs[0] = $para;
+        }
+
+        return $paragraphs;
+    }
+
+    /**
+     * @return AmendmentSection[]
+     */
+    public function getAmendmentSectionsToBeShownInMotionView(): array
+    {
+        $sections = [];
+
+        $motion = $this->getConsultation()->getMotion($this->motionId);
+
+        // If this motion is already replaced by a new one, we're in the "history mode"
+        // So we also show the obsoleted amendments
+        $includeObsoleted = (count($motion->getVisibleReplacedByMotions()) > 0);
+        foreach ($motion->getVisibleAmendments($includeObsoleted) as $amendment) {
+            if ($amendment->globalAlternative) {
+                continue;
+            }
+            $amSec = null;
+            foreach ($amendment->getActiveSections() as $section) {
+                if ($section->sectionId == $this->sectionId) {
+                    $amSec = $section;
+                }
+            }
+            if (!$amSec) {
+                continue;
+            }
+            if ($amSec->getData() === $this->getData()) {
+                continue;
+            }
+
+            $sections[] = $amSec;
+        }
+
+        return $sections;
+    }
+
+    /**
      * @return MotionSectionParagraph[]
      * @throws Internal
      */
@@ -304,11 +360,28 @@ class MotionSection extends IMotionSection
         /** @var MotionSectionParagraph[] $return */
         $return = [];
         $paras  = $this->getTextParagraphLines();
+        $paraNoWithoutSplitLists = 0;
         foreach ($paras as $paraNo => $para) {
             $paragraph              = new MotionSectionParagraph();
             $paragraph->paragraphNo = $paraNo;
             $paragraph->lines       = $para;
             $paragraph->origStr     = str_replace('###LINENUMBER###', '', implode('', $para));
+
+            // If this is the same list type as the previous paragraph, then this is a split up list.
+            // In that case, we don't want to increase the counter after all.
+            $isSplitListItem = false;
+            if ($paraNo > 0) {
+                if (str_starts_with($paragraph->origStr, '<ol') && str_starts_with($return[$paraNo - 1]->origStr, '<ol')) {
+                    $isSplitListItem = true;
+                }
+                if (str_starts_with($paragraph->origStr, '<ul') && str_starts_with($return[$paraNo - 1]->origStr, '<ul')) {
+                    $isSplitListItem = true;
+                }
+            }
+            if ($isSplitListItem) {
+                $paraNoWithoutSplitLists--;
+            }
+            $paragraph->paragraphNoWithoutSplitLists = $paraNoWithoutSplitLists;
 
             if ($includeAmendment) {
                 $paragraph->amendmentSections = [];
@@ -324,36 +397,19 @@ class MotionSection extends IMotionSection
             }
 
             $return[$paraNo] = $paragraph;
+
+            $paraNoWithoutSplitLists++;
         }
-        if ($minOnePara && count($return) === 0) {
-            $para              = new MotionSectionParagraph();
-            $para->paragraphNo = 0;
-            $para->lines       = [];
-            $para->origStr     = '';
-            $return[0]         = $para;
+        if ($minOnePara) {
+            $return = $this->ensureAtLeastOneParagraph($return, $includeAmendment);
         }
         if ($includeAmendment) {
-            $motion = $this->getConsultation()->getMotion($this->motionId);
-
-            // If this motion is already replaced by a new one, we're in the "history mode"
-            // So we also show the obsoleted amendments
-            $includeObsoleted = (count($motion->getVisibleReplacedByMotions()) > 0);
-            foreach ($motion->getVisibleAmendments($includeObsoleted) as $amendment) {
-                if ($amendment->globalAlternative) {
-                    continue;
-                }
-                $amSec = null;
-                foreach ($amendment->getActiveSections() as $section) {
-                    if ($section->sectionId == $this->sectionId) {
-                        $amSec = $section;
-                    }
-                }
-                if (!$amSec) {
-                    continue;
-                }
+            $amendmentSections = $this->getAmendmentSectionsToBeShownInMotionView();
+            foreach ($amendmentSections as $amSec) {
                 $paragraphs   = HTMLTools::sectionSimpleHTML($this->getData());
                 $amParagraphs = $amSec->diffDataToOrigParagraphs($paragraphs);
                 foreach ($amParagraphs as $amParagraph) {
+                    $return = $this->ensureAtLeastOneParagraph($return, $includeAmendment);
                     $return[$amParagraph->origParagraphNo]->amendmentSections[] = $amParagraph;
                 }
             }
