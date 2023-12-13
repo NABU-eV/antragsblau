@@ -18,6 +18,4 @@ return [
     'aria_ins'       => 'Einfügen: „%INS%”',
     'aria_del'       => 'Streichen: „%DEL%”',
     'modu_prefix'    => 'modÜ',
-    'change_from'    => 'Von',
-    'change_to'      => 'Zu',
 ];

@@ -157,8 +157,8 @@ body {
 }
 
 .logo {
-  a, a:link, a:visited, a:focus {
-    border: 0 !important;
+  a, a:link, a:visited {
+    border: 0;
     color: #fff;
     text-decoration: none;
     text-shadow: 1px 1px 5px rgba(0, 0, 0, 0.3);

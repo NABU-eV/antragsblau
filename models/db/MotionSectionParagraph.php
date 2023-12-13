@@ -1,13 +1,10 @@
 <?php
 
-declare(strict_types=1);
-
 namespace app\models\db;
 
 class MotionSectionParagraph
 {
     public int $paragraphNo;
-    public int $paragraphNoWithoutSplitLists;
     public string $origStr;
 
     /** @var string[] */

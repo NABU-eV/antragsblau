@@ -19,9 +19,10 @@ abstract class IMotionSection extends ActiveRecord
     abstract public function getSettings(): ?ConsultationSettingsMotionSection;
 
     /**
+     * @return ISectionType
      * @throws Internal
      */
-    public function getSectionType(): ISectionType
+    public function getSectionType()
     {
         switch ($this->getSettings()->type) {
             case ISectionType::TYPE_TITLE:
@@ -35,6 +36,7 @@ abstract class IMotionSection extends ActiveRecord
             case ISectionType::TYPE_TABULAR:
                 return new TabularData($this);
             case ISectionType::TYPE_PDF_ATTACHMENT:
+                return new PDF($this);
             case ISectionType::TYPE_PDF_ALTERNATIVE:
                 return new PDF($this);
             case ISectionType::TYPE_VIDEO_EMBED:

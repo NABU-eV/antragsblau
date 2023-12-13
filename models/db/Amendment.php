@@ -310,16 +310,6 @@ class Amendment extends IMotion implements IRSSItem
         }
     }
 
-    public function showTitlePrefix(): bool
-    {
-        // For statute amendments, the hideTitlePrefix is relevant; for regular amendments not.
-        if ($this->getMyMotionType()->amendmentsOnly && $this->getMyConsultation()->getSettings()->hideTitlePrefix) {
-            return false;
-        }
-
-        return trim($this->getFormattedTitlePrefix()) !== '';
-    }
-
     public function getTitleWithPrefix(): string
     {
         return $this->getTitle();
@@ -427,68 +417,40 @@ class Amendment extends IMotion implements IRSSItem
     }
 
     /**
-     * @param array<array{original: string, new: string, firstLine: int}> $sectionData
-     * @return array{from: int, to: int}
+     * @param string[] $original
+     * @param string[] $new
      * @throws Internal
      */
-    public static function calcAffectedDiffLinesCached(array $sectionData, int $lineLength): array
+    public static function calcFirstDiffLineCached(int $firstLine, int $lineLength, array $original, array $new): int
     {
-        $cacheFunc = 'calcAffectedDiffLinesCached';
-        $cacheDeps = [$sectionData, $lineLength];
+        $cacheFunc = 'calcFirstDiffLineCached';
+        $cacheDeps = [$firstLine, $lineLength, $original, $new];
 
         $cache = HashedStaticCache::getCache($cacheFunc, $cacheDeps);
         if ($cache !== false) {
             return $cache;
         }
 
-        $firstAffectedLine = null;
-        $lastAffectedLine = null;
+        $firstLineFallback = $firstLine;
 
-        foreach ($sectionData as $section) {
+        for ($i = 0; $i < count($original) && $i < count($new); $i++) {
             $formatter = new AmendmentSectionFormatter();
-            $formatter->setTextOriginal($section['original']);
-            $formatter->setTextNew($section['new']);
-            $formatter->setFirstLineNo($section['firstLine']);
+            $formatter->setTextOriginal($original[$i]);
+            $formatter->setTextNew($new[$i]);
+            $formatter->setFirstLineNo($firstLine);
             $diffGroups = $formatter->getDiffGroupsWithNumbers($lineLength, DiffRenderer::FORMATTING_CLASSES, 0);
 
-            foreach ($diffGroups as $diffGroup) {
-                if ($firstAffectedLine === null) {
-                    $firstAffectedLine = $diffGroup->lineFrom;
-                }
-                $lastAffectedLine = $diffGroup->lineTo;
+            if (count($diffGroups) > 0) {
+                $firstLine = $diffGroups[0]->lineFrom;
+                HashedStaticCache::setCache($cacheFunc, $cacheDeps, $firstLine);
+                return $firstLine;
             }
         }
 
-        $result = [
-            'from' => $firstAffectedLine ?? ($sectionData[0]['firstLine'] ?? 0),
-            'to' => $lastAffectedLine ?? ($sectionData[0]['firstLine'] ?? 0),
-        ];
-        HashedStaticCache::setCache($cacheFunc, $cacheDeps, $result);
-
-        return $result;
+        HashedStaticCache::setCache($cacheFunc, $cacheDeps, $firstLineFallback);
+        return $firstLineFallback;
     }
 
-    /**
-     * @return array{from: int, to: int}
-     */
-    public function getAffectedLines(): array
-    {
-        $lineLength = $this->getMyConsultation()->getSettings()->lineLength;
-        $sectionData = [];
-
-        foreach ($this->getActiveSections() as $section) {
-            if ($section->getSettings()->type !== ISectionType::TYPE_TEXT_SIMPLE) {
-                continue;
-            }
-            $sectionData[] = [
-                'original' => $section->getOriginalMotionSection()->getData(),
-                'new' => $section->data,
-                'firstLine' => $section->getFirstLineNumber(),
-            ];
-        }
-
-        return self::calcAffectedDiffLinesCached($sectionData, $lineLength);
-    }
 
     /**
      * @throws Internal
@@ -499,11 +461,22 @@ class Amendment extends IMotion implements IRSSItem
         if ($cached !== null) {
             return $cached;
         }
+        $firstLine  = $this->getMyMotion()->getFirstLineNumber();
+        $lineLength = $this->getMyConsultation()->getSettings()->lineLength;
+        $original   = $new = [];
 
-        $affectedLines = $this->getAffectedLines();
+        foreach ($this->getActiveSections() as $section) {
+            if ($section->getSettings()->type !== ISectionType::TYPE_TEXT_SIMPLE) {
+                continue;
+            }
+            $original[] = $section->getOriginalMotionSection()->getData();
+            $new[]      = $section->data;
+        }
 
-        $this->setCacheItem('lines.getFirstDiffLine', $affectedLines['from']);
-        return $affectedLines['from'];
+        $firstLine = static::calcFirstDiffLineCached($firstLine, $lineLength, $original, $new);
+
+        $this->setCacheItem('lines.getFirstDiffLine', $firstLine);
+        return $firstLine;
     }
 
     public static function compareByLineNumbers(Amendment $ae1, Amendment $ae2): int

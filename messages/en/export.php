@@ -29,8 +29,6 @@ return [
     'agenda_item'           => 'Agenda',
     'prefix_short'          => 'Signature',
     'initiator'             => 'Proposer',
-    'author'                => 'Author',
-    'date'                  => 'Date',
     'responsibility'        => 'Responsibility',
     'text'                  => 'Text',
     'tags'                  => 'Tags',

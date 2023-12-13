@@ -8,15 +8,14 @@
 use app\components\UrlHelper;
 use app\models\settings\PrivilegeQueryContext;
 use app\models\settings\Privileges;
-use app\models\db\{ConsultationMotionType, ConsultationSettingsMotionSection, MotionComment, User};
+use app\models\db\{ConsultationSettingsMotionSection, MotionComment, User};
 use app\models\forms\CommentForm;
 use yii\helpers\Html;
 
 $consultation   = $section->getConsultation();
 $motion         = $section->getMotion();
-$motionType     = $motion->getMyMotionType();
 $hasLineNumbers = $section->getSettings()->lineNumbers;
-$paragraphs     = $section->getTextParagraphObjects($hasLineNumbers, true, true, true);
+$paragraphs     = $section->getTextParagraphObjects($hasLineNumbers, true, true);
 $screenAdmin    = User::havePrivilege($section->getConsultation(), Privileges::PRIVILEGE_SCREENING, PrivilegeQueryContext::motion($motion));
 $classes        = ['paragraph'];
 if ($hasLineNumbers) {
@@ -26,12 +25,11 @@ if ($hasLineNumbers) {
 
 foreach ($paragraphs as $paragraphNo => $paragraph) {
     $parClasses = $classes;
-    $firstLine = $paragraph->lines[0] ?? '';
-    if (str_starts_with($firstLine, '<ul>')) {
+    if (mb_stripos($paragraph->lines[0], '<ul>') === 0) {
         $parClasses[] = 'list';
-    } elseif (str_starts_with($firstLine, '<ol>')) {
+    } elseif (mb_stripos($paragraph->lines[0], '<ol>') === 0) {
         $parClasses[] = 'list';
-    } elseif (str_starts_with($firstLine, '<blockquote>')) {
+    } elseif (mb_stripos($paragraph->lines[0], '<blockquote>') === 0) {
         $parClasses[] = 'blockquote';
     }
     if (in_array($paragraphNo, $openedComments)) {
@@ -45,7 +43,7 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
     if ($hasComments || $hasAmendments) {
         echo '<ul class="bookmarks">';
         if ($hasComments) {
-            $mayOpen = $motionType->maySeeIComments();
+            $mayOpen     = $section->getMotion()->getMyMotionType()->maySeeIComments();
             $numComments = $paragraph->getNumOfAllVisibleComments($screenAdmin);
             if ($numComments > 0 || $mayOpen) {
                 echo '<li class="comment">';
@@ -94,27 +92,14 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
             if ($i > 0 && !in_array($first3, ['<ol', '<ul', '<p>', '<di'])) {
                 echo '<br>';
             }
-            if ($consultation->getSettings()->externalLinksNewWindow) {
-                echo preg_replace('/<a( href=["\']([^"\']*)["\']>)/iu', '<a target="_blank"$1', $line);
-            } else {
-                echo $line;
-            }
+            echo $line;
         }
     } else {
-        if ($consultation->getSettings()->externalLinksNewWindow) {
-            echo preg_replace('/<a( href=["\']([^"\']*)["\']>)/iu', '<a target="_blank"$1', $paragraph->origStr);
-        } else {
-            echo $paragraph->origStr;
-        }
+        echo $paragraph->origStr;
     }
 
     // Only static HTML should be returned from this view, so we can safely cache it.
     echo '<!--PRIVATE_NOTE_' . $section->sectionId . '_' . $paragraphNo . '-->';
-
-    if ($section->getSettings()->hasAmendments &&
-        in_array($motionType->amendmentMultipleParagraphs, [ConsultationMotionType::AMEND_PARAGRAPHS_SINGLE_PARAGRAPH, ConsultationMotionType::AMEND_PARAGRAPHS_SINGLE_PARAGRAPH])) {
-        echo '<!--AMENDMENT_LINK_' . $section->sectionId . '_' . $paragraph->paragraphNoWithoutSplitLists . '-->';
-    }
 
     echo '</div>';
 
@@ -146,8 +131,9 @@ foreach ($paragraphs as $paragraphNo => $paragraph) {
         gc_collect_cycles();
     }
 
-    if ($section->getSettings()->hasComments === ConsultationSettingsMotionSection::COMMENTS_PARAGRAPHS && $motionType->maySeeIComments()) {
-        if (count($paragraph->comments) > 0 || $motionType->getCommentPolicy()) {
+    if ($section->getSettings()->hasComments === ConsultationSettingsMotionSection::COMMENTS_PARAGRAPHS &&
+        $motion->getMyMotionType()->maySeeIComments()) {
+        if (count($paragraph->comments) > 0 || $section->getMotion()->motionType->getCommentPolicy()) {
             echo '<section class="commentHolder" data-antragsgruen-widget="frontend/Comments">';
             $motion = $section->getMotion();
             $form   = $commentForm;

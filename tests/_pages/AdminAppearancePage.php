@@ -11,6 +11,9 @@ class AdminAppearancePage extends BasePage
 {
     public string|array $route = 'admin/index/appearance';
 
+    /**
+     *
+     */
     public function saveForm(): void
     {
         $this->actor->submitForm('#consultationAppearanceForm', [], 'save');

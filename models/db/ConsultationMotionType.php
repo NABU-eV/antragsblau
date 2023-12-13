@@ -330,7 +330,10 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
         return true;
     }
 
-    public function rules(): array
+    /**
+     * @return array
+     */
+    public function rules()
     {
         return [
             [['consultationId', 'titleSingular', 'titlePlural', 'createTitle', 'sidebarCreateButton'], 'required'],

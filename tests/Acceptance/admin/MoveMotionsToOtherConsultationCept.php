@@ -20,7 +20,6 @@ $I->submitForm('.consultationCreateForm', [], 'createConsultation');
 $I->wantTo('move the motion to test3');
 
 $I->gotoMotion(true, 'Testing_proposed_changes-630');
-$I->dontSeeElement('#section_4_0');
 $I->click('#sidebar .adminEdit a');
 $I->click('.sidebarActions .move');
 

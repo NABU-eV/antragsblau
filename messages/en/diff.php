@@ -18,6 +18,4 @@ return [
     'aria_ins'       => 'Insert: "%INS%"',
     'aria_del'       => 'Delete: "%DEL%"',
     'modu_prefix'    => 'Mod.',
-    'change_from'    => 'From',
-    'change_to'      => 'To',
 ];

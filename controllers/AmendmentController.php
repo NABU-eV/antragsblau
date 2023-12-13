@@ -13,7 +13,14 @@ use app\models\http\{BinaryFileResponse,
     RestApiExceptionResponse,
     RestApiResponse};
 use app\components\{HTMLTools, Tools, UrlHelper};
-use app\models\db\{Amendment, AmendmentAdminComment, AmendmentSupporter, ConsultationLog, ISupporter, Motion, User};
+use app\models\db\{Amendment,
+    AmendmentAdminComment,
+    AmendmentSupporter,
+    ConsultationLog,
+    ConsultationSettingsTag,
+    ISupporter,
+    Motion,
+    User};
 use app\models\events\AmendmentEvent;
 use app\models\exceptions\{FormError, MailNotSent, ResponseException};
 use app\models\forms\{AmendmentEditForm, ProposedChangeForm};
@@ -279,7 +286,7 @@ class AmendmentController extends Base
         }
 
         $fromMode = ($amendment->status === Amendment::STATUS_DRAFT ? 'create' : 'edit');
-        $form = new AmendmentEditForm($amendment->getMyMotion(), $amendment->getMyAgendaItem(), $amendment, null, null);
+        $form = new AmendmentEditForm($amendment->getMyMotion(), $amendment->getMyAgendaItem(), $amendment);
         if (!$amendment->canEditInitiators()) {
             $form->setAllowEditingInitiators(false);
         }
@@ -324,7 +331,7 @@ class AmendmentController extends Base
     /**
      * @throws \app\models\exceptions\NotAmendable
      */
-    public function actionCreate(string $motionSlug, int $agendaItemId = 0, int $cloneFrom = 0, int $createFromAmendment = 0, ?int $sectionId = null, ?int $paragraphNo = null): ResponseInterface
+    public function actionCreate(string $motionSlug, int $agendaItemId = 0, int $cloneFrom = 0, int $createFromAmendment = 0): ResponseInterface
     {
         $motion = $this->consultation->getMotion($motionSlug);
         if (!$motion) {
@@ -342,12 +349,12 @@ class AmendmentController extends Base
         }
 
         if ($agendaItemId > 0) {
-            $agendaItem = $this->consultation->getAgendaItem($agendaItemId);
+            $agendaItem = $this->consultation->getAgendaItem(intval($agendaItemId));
         } else {
             $agendaItem = null;
         }
 
-        $form = new AmendmentEditForm($motion, $agendaItem, null, $sectionId, $paragraphNo);
+        $form = new AmendmentEditForm($motion, $agendaItem, null);
         $supportType = $motion->getMyMotionType()->getAmendmentSupportTypeClass();
         $iAmAdmin = $this->consultation->havePrivilege(Privileges::PRIVILEGE_SCREENING, null);
 
@@ -472,7 +479,26 @@ class AmendmentController extends Base
                 $amendment->proposalComment = $this->getHttpRequest()->post('proposalComment', '');
             }
 
-            $amendment->setProposedProcedureTags($this->getHttpRequest()->post('tags', []), $ppChanges);
+            $oldTags = $amendment->getProposedProcedureTags();
+            $newTags = [];
+            $changed = false;
+            foreach ($this->getHttpRequest()->post('tags', []) as $newTag) {
+                $tag = $amendment->getMyConsultation()->getExistingTagOrCreate(ConsultationSettingsTag::TYPE_PROPOSED_PROCEDURE, $newTag, 0);
+                if (!isset($oldTags[$tag->getNormalizedName()])) {
+                    $amendment->link('tags', $tag);
+                    $changed = true;
+                }
+                $newTags[] = ConsultationSettingsTag::normalizeName($newTag);
+            }
+            foreach ($oldTags as $tagKey => $tag) {
+                if (!in_array($tagKey, $newTags)) {
+                    $amendment->unlink('tags', $tag, true);
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $ppChanges->setProposalTagsHaveChanged(array_keys($oldTags), $newTags);
+            }
 
             if ($canChangeProposalUnlimitedly) {
                 $proposalExplanationPre = $amendment->proposalExplanation;

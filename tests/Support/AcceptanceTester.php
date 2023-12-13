@@ -75,7 +75,7 @@ class AcceptanceTester extends Actor
     public function gotoMotion(bool $check = true, string $motionSlug = '321-o-zapft-is'): MotionPage
     {
         if (is_numeric($motionSlug)) {
-            /** @var Motion $motion */
+            /** @var \app\models\db\Motion $motion */
             $motion     = Motion::findOne($motionSlug);
             $motionSlug = $motion->getMotionSlug();
         }

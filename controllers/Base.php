@@ -581,7 +581,6 @@ class Base extends Controller
             }
         }
         if (is_null($this->consultation) || $this->consultation->dateDeletion !== null) {
-            $this->layoutParams->setLayout($this->site->getSettings()->siteLayout);
             $this->consultationNotFound();
         } else {
             Consultation::setCurrent($this->consultation);

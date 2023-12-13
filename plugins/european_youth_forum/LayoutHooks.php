@@ -28,9 +28,6 @@ class LayoutHooks extends Hooks
 
     protected function getUserBarGroups(User $user): string
     {
-        if (!$this->consultation) {
-            return '';
-        }
         $groups = array_filter($user->getConsultationUserGroups($this->consultation), function (ConsultationUserGroup $group) {
             if (str_starts_with($group->title, 'Voting ')) {
                 return false;

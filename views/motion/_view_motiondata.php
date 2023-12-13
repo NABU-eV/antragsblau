@@ -28,10 +28,8 @@ echo '<div class="content">';
 
 echo $this->render('@app/views/shared/translate', ['toTranslateUrl' => UrlHelper::createMotionUrl($motion)]);
 
-$motionHistory = array_values(array_filter(
-    MotionNumbering::getSortedHistoryForMotion($motion, false),
-    fn($motion) => $motion->isReadable()
-));
+$iAmAdmin = User::havePrivilege(Consultation::getCurrent(), Privileges::PRIVILEGE_ANY, null);
+$motionHistory = MotionNumbering::getSortedHistoryForMotion($motion, !$iAmAdmin);
 
 $replacedByMotion = MotionNumbering::findMostRecentVersionOfMotion($motion, true);
 if ($replacedByMotion) {
@@ -121,7 +119,6 @@ MotionLayoutHelper::addTagsRow($motion, $motion->getPublicTopicTags(), $motionDa
 if (count($motionHistory) > 1) {
     $historyIsOpen = ($motionHistory[count($motionHistory) - 1]->id !== $motion->id);
     $historyContent = '<div class="fullHistory' . ($historyIsOpen ? '' : ' hidden') . '">';
-    $historyMotionIds = array_map(fn(Motion $motion) => $motion->id, $motionHistory);
     foreach ($motionHistory as $motionHis) {
         $historyLine = '';
         $versionName = $motionHis->getFormattedVersion();
@@ -136,7 +133,7 @@ if (count($motionHistory) > 1) {
 
         $historyLine .= '<span class="date">(' . Tools::formatMysqlDate($motionHis->dateCreation, false) . ')</span>';
 
-        if ($motionHis->version > Motion::VERSION_DEFAULT && in_array($motionHis->parentMotionId, $historyMotionIds)) {
+        if ($motionHis->version > Motion::VERSION_DEFAULT) {
             $changesUrl = UrlHelper::createMotionUrl($motionHis, 'view-changes');
             $changesLink = '<span class="changesLink">';
             $changesLink .= '<span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span> ';

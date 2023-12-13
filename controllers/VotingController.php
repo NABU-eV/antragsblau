@@ -210,7 +210,7 @@ class VotingController extends Base
                 $formatResponse = BinaryFileResponse::TYPE_ODS;
                 break;
             case 'xlsx':
-                $formatResponse = BinaryFileResponse::TYPE_XLSX;
+                $formatResponse = BinaryFileResponse::TYPE_XSLX;
                 break;
             default:
                 $formatResponse = BinaryFileResponse::TYPE_HTML;

@@ -58,7 +58,7 @@ foreach ($sections as $i => $section) {
     }
 
     $sectionType = $section->getSettings()->type;
-    if ($section->getSectionType()->isEmpty() && count($section->getAmendmentSectionsToBeShownInMotionView()) === 0) {
+    if ($section->getSectionType()->isEmpty()) {
         continue;
     }
 
@@ -137,9 +137,9 @@ foreach ($sections as $i => $section) {
 if ($right === '') {
     $out = $main;
 } else {
-    $out = '<div class="motionTwoCols"><div class="motionMainCol">';
+    $out = '<div class="row" style="margin-top: 2px;"><div class="col-md-8 motionMainCol">';
     $out .= $main;
-    $out .= '</div><div class="motionRightCol">';
+    $out .= '</div><div class="col-md-4 motionRightCol">';
     $out .= $right;
     $out .= '</div></div>';
 }

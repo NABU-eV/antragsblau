@@ -17,6 +17,9 @@ use app\models\sectionTypes\{ISectionType, TextSimple};
 
 class AmendmentEditForm
 {
+    public Motion $motion;
+    public ?ConsultationAgendaItem $agendaItem;
+
     /** @var AmendmentSupporter[] */
     public array $supporters = [];
 
@@ -32,14 +35,10 @@ class AmendmentEditForm
     private bool $adminMode = false;
     private bool $allowEditingInitiators = true; // Only affects updating
 
-    public function __construct(
-        public Motion $motion,
-        public ?ConsultationAgendaItem $agendaItem,
-        ?Amendment $amendment,
-        public ?int $initSectionId,
-        public ?int $initParagraphNo
-    )
+    public function __construct(Motion $motion, ?ConsultationAgendaItem $agendaItem, ?Amendment $amendment)
     {
+        $this->motion = $motion;
+        $this->agendaItem = $agendaItem;
         /** @var AmendmentSection[] $amendmentSections */
         $amendmentSections = [];
         $motionSections    = [];
@@ -149,7 +148,7 @@ class AmendmentEditForm
                     }
                     $sectionType->setAmendmentData($values['sections'][$section->getSettings()->id]);
                 }
-                if (isset($files['sections']['tmp_name'])) {
+                if (isset($files['sections']) && isset($files['sections']['tmp_name'])) {
                     if (!empty($files['sections']['tmp_name'][$section->getSettings()->id])) {
                         $data = [];
                         foreach ($files['sections'] as $key => $vals) {

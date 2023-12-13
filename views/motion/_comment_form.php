@@ -1,6 +1,6 @@
 <?php
 
-use app\components\AntiSpam;
+use app\components\{AntiSpam, HTMLTools};
 use app\models\db\{Consultation, IComment, User, UserNotification};
 use app\models\forms\CommentForm;
 use Yii\Helpers\Html;

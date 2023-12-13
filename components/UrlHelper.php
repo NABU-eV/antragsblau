@@ -6,7 +6,6 @@ use app\models\db\{Amendment, AmendmentComment, Consultation, Motion, MotionComm
 use app\models\exceptions\FormError;
 use app\models\settings\AntragsgruenApp;
 use Yii;
-use yii\base\ViewRenderer;
 use yii\helpers\Url;
 
 class UrlHelper
@@ -42,9 +41,10 @@ class UrlHelper
     }
 
     /**
-     * @return array{module: string|null, controller: string|null, action?: string, view?: string}
+     * @param string $route
+     * @return string[]
      */
-    protected static function getRouteParts(string $route): array
+    protected static function getRouteParts($route)
     {
         $parts = explode('/', $route);
         if (count($parts) === 3) {
@@ -76,7 +76,7 @@ class UrlHelper
 
         if ($consultation !== null && !isset($route['consultationPath'])) {
             // for pages/show-page, consultationPath is optional
-            if ($routeParts['controller'] !== 'pages' || !in_array(($routeParts['action'] ?? ''), ['show-page', 'save-page'])) {
+            if ($routeParts['controller'] !== 'pages' || !in_array($routeParts['action'], ['show-page', 'save-page'])) {
                 $route['consultationPath'] = $consultation->urlPath;
             }
         }
@@ -84,7 +84,7 @@ class UrlHelper
             $route['subdomain'] = $site->subdomain;
         }
 
-        if ($routeParts['controller'] === 'user' && !in_array($routeParts['action'] ?? '', ['consultationaccesserror', 'myaccount'])) {
+        if ($routeParts['controller'] === 'user' && $routeParts['action'] !== 'consultationaccesserror') {
             unset($route['consultationPath']);
         }
         if (in_array(
@@ -111,7 +111,10 @@ class UrlHelper
         return $finalRoute;
     }
 
-    public static function createUrl(string|array $route, ?Consultation $forceConsultation = null): string
+    /**
+     * @param string|array $route
+     */
+    public static function createUrl($route, ?Consultation $forceConsultation = null): string
     {
         if (!is_array($route)) {
             $route = [$route];
@@ -134,7 +137,10 @@ class UrlHelper
         }
     }
 
-    public static function createLoginUrl(string|array $route): string
+    /**
+     * @param string|array $route
+     */
+    public static function createLoginUrl($route): string
     {
         $target_url = self::createUrl($route);
         if (RequestContext::getWebApplication()->user->isGuest) {

@@ -409,15 +409,6 @@ class Motion extends IMotion implements IRSSItem
         return $intro . $this->title;
     }
 
-    public function showTitlePrefix(): bool
-    {
-        return (
-            !$this->getMyConsultation()->getSettings()->hideTitlePrefix &&
-            trim($this->getFormattedTitlePrefix()) !== '' &&
-            !$this->isResolution()
-        );
-    }
-
     public function getTitleWithPrefix(): string
     {
         if ($this->getMyConsultation()->getSettings()->hideTitlePrefix) {

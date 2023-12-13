@@ -18,7 +18,8 @@ $consultation = $controller->consultation;
 
 $DEBUG = false;
 
-$params = \app\models\settings\AntragsgruenApp::getInstance();
+/** @var \app\models\settings\AntragsgruenApp $params */
+$params = Yii::$app->params;
 
 /** @noinspection PhpUnhandledExceptionInspection */
 $doc = new Spreadsheet([
