@@ -2,6 +2,7 @@
 
 namespace app\plugins\antragsblau_saml;
 
+use app\controllers\Base;
 use app\components\{LoginProviderInterface, RequestContext, UrlHelper};
 use app\models\db\ConsultationUserGroup;
 use app\models\db\User;
@@ -106,13 +107,29 @@ class SamlLogin implements LoginProviderInterface
         $user->unlinkAll('userGroups', true);
 
         foreach ($groups as $group) {
-            $userGroup = ConsultationUserGroup::findOne(['title' => $group]);
+            $userGroup = ConsultationUserGroup::findOne([
+                'title'          => $group,
+                'consultationId' => $this->getCurrentConsultationId()
+            ]);
+
             if ($userGroup) {
                 $user->link('userGroups', $userGroup);
             }
         }
 
         $user->save();
+    }
+
+    /**
+     * @return int
+     */
+    protected function getCurrentConsultationId(): int
+    {
+        /** @var Base $controller */
+        $app = RequestContext::getWebApplication();
+        $controller = $app->controller;
+
+        return $controller->site->currentConsultationId;
     }
 
     /**
