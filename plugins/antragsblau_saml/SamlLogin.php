@@ -109,7 +109,7 @@ class SamlLogin implements LoginProviderInterface
         foreach ($groups as $group) {
             $userGroup = ConsultationUserGroup::findOne([
                 'title'          => $group,
-                'consultationId' => $this->getCurrentConsultationId()
+                'consultationId' => $group == 'Seiten-Admin' ? null : $this->getCurrentConsultationId()
             ]);
 
             if ($userGroup) {
