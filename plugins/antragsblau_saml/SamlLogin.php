@@ -2,6 +2,7 @@
 
 namespace app\plugins\antragsblau_saml;
 
+use app\controllers\Base;
 use app\components\{LoginProviderInterface, RequestContext, UrlHelper};
 use app\models\db\ConsultationUserGroup;
 use app\models\db\User;
@@ -69,7 +70,7 @@ class SamlLogin implements LoginProviderInterface
         $givenname = (isset($params[self::PARAM_GIVEN_NAME]) ? $params[self::PARAM_GIVEN_NAME][0] : '');
         $familyname = (isset($params[self::PARAM_FAMILY_NAME]) ? $params[self::PARAM_FAMILY_NAME][0] : '');
         $username = $params[self::PARAM_USERNAME][0];
-        $groups = $params[self::PARAM_GROUPS] ?? ['Teilnehmer*in'];
+        $groups = $params[self::PARAM_GROUPS] ?? [];
         $auth = $this->usernameToAuth($username);
 
         /** @var User|null $user */
@@ -106,13 +107,29 @@ class SamlLogin implements LoginProviderInterface
         $user->unlinkAll('userGroups', true);
 
         foreach ($groups as $group) {
-            $userGroup = ConsultationUserGroup::findOne(['title' => $group]);
+            $userGroup = ConsultationUserGroup::findOne([
+                'title'          => $group,
+                'consultationId' => $this->getCurrentConsultationId()
+            ]);
+
             if ($userGroup) {
                 $user->link('userGroups', $userGroup);
             }
         }
 
         $user->save();
+    }
+
+    /**
+     * @return int
+     */
+    protected function getCurrentConsultationId(): int
+    {
+        /** @var Base $controller */
+        $app = RequestContext::getWebApplication();
+        $controller = $app->controller;
+
+        return $controller->site->currentConsultationId;
     }
 
     /**
