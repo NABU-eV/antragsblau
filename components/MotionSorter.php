@@ -18,13 +18,7 @@ class MotionSorter
                 $return = 0;
             }
         } else {
-            if ($str1 < $str2) {
-                $return = -1;
-            } elseif ($str1 > $str2) {
-                $return = 1;
-            } else {
-                $return = 0;
-            }
+            $return = strnatcasecmp($str1, $str2);
         }
 
         return $return;
@@ -292,6 +286,9 @@ class MotionSorter
         $motions     = [];
         $resolutions = [];
         foreach ($allMotions as $mot) {
+            if (!$mot->isReadable()) {
+                continue;
+            }
             if ($mot->getMyMotionType()->amendmentsOnly) {
                 foreach ($mot->amendments as $amendment) {
                     $motions[] = $amendment;

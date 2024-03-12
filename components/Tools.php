@@ -73,15 +73,12 @@ class Tools
             return $consultation->getSettings()->dateFormat;
         }
 
-        switch (self::getCurrentDateLocale()) {
-            case 'de':
-                return ConsultationSettings::DATE_FORMAT_DMY_DOT;
-            case 'fr':
-                return ConsultationSettings::DATE_FORMAT_DMY_SLASH;
-            case 'en':
-            default:
-                return ConsultationSettings::DATE_FORMAT_MDY_SLASH;
-        }
+        return match (self::getCurrentDateLocale()) {
+            'de' => ConsultationSettings::DATE_FORMAT_DMY_DOT,
+            'fr', 'ca' => ConsultationSettings::DATE_FORMAT_DMY_SLASH,
+            'nl' => ConsultationSettings::DATE_FORMAT_DMY_DASH,
+            default => ConsultationSettings::DATE_FORMAT_MDY_SLASH,
+        };
     }
 
     public static function dateBootstraptime2sql(string $time, ?string $locale = null): string
@@ -103,7 +100,20 @@ class Tools
                     $matches['minute']
                 );
             }
-        } elseif ($locale === 'fr') {
+        } elseif ($locale === 'nl') {
+            $pattern = '/^(?<day>\\d{1,2})\-(?<month>\\d{1,2})\-(?<year>\\d{4}) ' .
+                       '(?<hour>\\d{1,2})\:(?<minute>\\d{1,2})$/';
+            if (preg_match($pattern, $time, $matches)) {
+                return sprintf(
+                    '%1$04d-%2$02d-%3$02d %4$02d:%5$02d:00',
+                    $matches['year'],
+                    $matches['month'],
+                    $matches['day'],
+                    $matches['hour'],
+                    $matches['minute']
+                );
+            }
+        } elseif ($locale === 'fr' || $locale === 'ca') {
             $pattern = '/^(?<day>\\d{1,2})\/(?<month>\\d{1,2})\/(?<year>\\d{4}) ' .
                        '(?<hour>\\d{1,2})\:(?<minute>\\d{1,2})$/';
             if (preg_match($pattern, $time, $matches) && $matches['year'] > 1970) {
@@ -170,10 +180,12 @@ class Tools
 
         if ($locale === 'de') {
             return $matches['day'] . '.' . $matches['month'] . '.' . $matches['year'];
-        } elseif ($locale === 'fr') {
+        } elseif ($locale === 'fr' || $locale === 'ca') {
             return $matches['day'] . '/' . $matches['month'] . '/' . $matches['year'];
         } elseif ($locale === 'en') {
             return $matches['month'] . '/' . $matches['day'] . '/' . $matches['year'];
+        } elseif ($locale === 'nl') {
+            return $matches['day'] . '-' . $matches['month'] . '-' . $matches['year'];
         } else {
             throw new Internal('Unsupported Locale: ' . $locale);
         }
@@ -193,13 +205,18 @@ class Tools
             if (preg_match($pattern, $date, $matches)) {
                 return sprintf('%1$04d-%2$02d-%3$02d', $matches['year'], $matches['month'], $matches['day']);
             }
-        } elseif ($locale === 'fr') {
+        } elseif ($locale === 'fr' || $locale === 'ca') {
             $pattern = '/^(?<day>\\d{1,2})\/(?<month>\\d{1,2})\/(?<year>\\d{4})$/';
             if (preg_match($pattern, $date, $matches)) {
                 return sprintf('%1$04d-%2$02d-%3$02d', $matches['year'], $matches['month'], $matches['day']);
             }
         } elseif ($locale === 'en') {
             $pattern = '/^(?<month>\\d{1,2})\/(?<day>\\d{1,2})\/(?<year>\\d{4})$/';
+            if (preg_match($pattern, $date, $matches)) {
+                return sprintf('%1$04d-%2$02d-%3$02d', $matches['year'], $matches['month'], $matches['day']);
+            }
+        } elseif ($locale === 'nl') {
+            $pattern = '/^(?<day>\\d{1,2})\-(?<month>\\d{1,2})\-(?<year>\\d{4})$/';
             if (preg_match($pattern, $date, $matches)) {
                 return sprintf('%1$04d-%2$02d-%3$02d', $matches['year'], $matches['month'], $matches['day']);
             }
@@ -230,7 +247,7 @@ class Tools
             $date .= $matches['hour'] . ':' . $matches['minute'];
 
             return $date;
-        } elseif ($locale === 'fr') {
+        } elseif ($locale === 'fr' || $locale === 'ca') {
             $date = $matches['day'] . '/' . $matches['month'] . '/' . $matches['year'] . ' ';
             $date .= $matches['hour'] . ':' . $matches['minute'];
 
@@ -240,6 +257,12 @@ class Tools
             $date .= $matches['hour'] . ':' . $matches['minute'];
 
             return $date;
+        } elseif ($locale === 'nl') {
+            $date = $matches['day'] . '-' . $matches['month'] . '-' . $matches['year'] . ' ';
+            $date .= $matches['hour'] . ':' . $matches['minute'];
+
+            return $date;
+
         } else {
             throw new Internal('Unsupported Locale: ' . $locale);
         }
@@ -254,15 +277,13 @@ class Tools
             $locale = Tools::getCurrentDateLocale();
         }
 
-        if ($locale === 'de') {
-            return $time->format('d.m.Y H:i');
-        } elseif ($locale === 'fr') {
-            return $time->format('d/m/Y H:i');
-        } elseif ($locale === 'en') {
-            return $time->format('m/d/Y H:i');
-        } else {
-            throw new Internal('Unsupported Locale: ' . $locale);
-        }
+        return match ($locale) {
+            'de' => $time->format('d.m.Y H:i'),
+            'fr', 'ca' => $time->format('d/m/Y H:i'),
+            'en' => $time->format('m/d/Y H:i'),
+            'nl' => $time->format('d-m-Y H:i'),
+            default => throw new Internal('Unsupported Locale: ' . $locale)
+        };
     }
 
     private static int $last_time = 0;
@@ -301,22 +322,14 @@ class Tools
             '%MONTHNAME%' => \Yii::t('structure', 'months_' . intval($date[1])),
         ];
 
-        switch (self::getCurrentDateFormat()) {
-            case ConsultationSettings::DATE_FORMAT_DMY_DOT:
-                $pattern = '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%DAY%.%MONTH%.%YEAR%</span>';
-                break;
-            case ConsultationSettings::DATE_FORMAT_DMY_SLASH:
-                $pattern = '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%DAY%/%MONTH%/%YEAR%</span>';
-                break;
-            case ConsultationSettings::DATE_FORMAT_MDY_SLASH:
-                $pattern = '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%MONTH%/%DAY%/%YEAR%</span>';
-                break;
-            case ConsultationSettings::DATE_FORMAT_YMD_DASH:
-                $pattern = '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%YEAR%-%MONTH%-%DAY%</span>';
-                break;
-            default:
-                throw new Internal('Unsupported date format: ' . self::getCurrentDateFormat());
-        }
+        $pattern = match (self::getCurrentDateFormat()) {
+            ConsultationSettings::DATE_FORMAT_DMY_DOT => '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%DAY%.%MONTH%.%YEAR%</span>',
+            ConsultationSettings::DATE_FORMAT_DMY_SLASH => '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%DAY%/%MONTH%/%YEAR%</span>',
+            ConsultationSettings::DATE_FORMAT_MDY_SLASH => '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%MONTH%/%DAY%/%YEAR%</span>',
+            ConsultationSettings::DATE_FORMAT_YMD_DASH => '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%YEAR%-%MONTH%-%DAY%</span>',
+            ConsultationSettings::DATE_FORMAT_DMY_DASH => '<span aria-label="%DAY%. %MONTHNAME% %YEAR%">%DAY%-%MONTH%-%YEAR%</span>',
+            default => throw new Internal('Unsupported date format: ' . self::getCurrentDateFormat()),
+        };
 
         return str_replace(array_keys($replaces), array_values($replaces), $pattern);
     }
@@ -337,18 +350,15 @@ class Tools
         if (count($date) !== 3) {
             return '-';
         }
-        switch (self::getCurrentDateFormat()) {
-            case ConsultationSettings::DATE_FORMAT_DMY_DOT:
-                return sprintf('%02d.%02d.%04d', $date[2], $date[1], $date[0]);
-            case ConsultationSettings::DATE_FORMAT_DMY_SLASH:
-                return sprintf('%02d/%02d/%04d', $date[2], $date[1], $date[0]);
-            case ConsultationSettings::DATE_FORMAT_MDY_SLASH:
-                return sprintf('%02d/%02d/%04d', $date[1], $date[2], $date[0]);
-            case ConsultationSettings::DATE_FORMAT_YMD_DASH:
-                return sprintf('%04d-%02d-%02d', $date[0], $date[1], $date[2]);
-            default:
-                throw new Internal('Unsupported date format: ' . self::getCurrentDateFormat());
-        }
+
+        return match (self::getCurrentDateFormat()) {
+            ConsultationSettings::DATE_FORMAT_DMY_DOT => sprintf('%02d.%02d.%04d', $date[2], $date[1], $date[0]),
+            ConsultationSettings::DATE_FORMAT_DMY_SLASH => sprintf('%02d/%02d/%04d', $date[2], $date[1], $date[0]),
+            ConsultationSettings::DATE_FORMAT_MDY_SLASH => sprintf('%02d/%02d/%04d', $date[1], $date[2], $date[0]),
+            ConsultationSettings::DATE_FORMAT_YMD_DASH => sprintf('%04d-%02d-%02d', $date[0], $date[1], $date[2]),
+            ConsultationSettings::DATE_FORMAT_DMY_DASH => sprintf('%02d-%02d-%04d', $date[2], $date[1], $date[0]),
+            default => throw new Internal('Unsupported date format: ' . self::getCurrentDateFormat()),
+        };
     }
 
     public static function formatMysqlDateTime(string $mysqlDate, bool $allowRelativeDates = true): string
