@@ -1,5 +1,13 @@
 # Version history
 
+### Version 4.13.2 (2024-02-18)
+
+- Bugfix: the version check in the editor that lead to warnings is now disabled.
+- Bugfix: The list of previous speakers was not expandable.
+- Bugfix: In rare cases, the sorting of motions on the home page was not working properly.
+- Bugfix: The new shortcut to create amendments for one paragraph section directly from the motion had problems when two lists came right next to each other.
+- New translations are provided: Dutch (thanks to m-rtijn and MickVolt) and Catalan (thanks to gtriasg and reixacu).
+
 ### Version 4.13.1 (2023-12-09)
 
 - As admin, is now possible to edit the list of internal (proposed procedure) tags, just like the public ones.
@@ -8,7 +16,7 @@
 - If amendments are set up to be restricted to one paragraph, then each paragraph in the motion now shows a direct link to the amendment creation page, with that paragraph pre-selected.
 - It can be set up so that external links and PDF-links will be opened in new, blank browser tabs/windows.
 - Security: Consultation admins could grant privileges to other consultations within the same site.
-- The backlinkt on the "my account" page leads to the consultation where the user was coming from.
+- The backlink on the "my account" page leads to the consultation where the user was coming from.
 - Admins can now download Excel/XLSX-exports of amendments and the comments to motions.
 - Motions and amendment in the "My motions" section of the home page are now sorted by prefix.
 - Bugfix: When resolutions were shown on a separate page, title prefixes / motion signatures were shown.

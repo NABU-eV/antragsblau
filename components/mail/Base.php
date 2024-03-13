@@ -109,7 +109,7 @@ abstract class Base
      */
     public function send(Email $message, string $toEmail)
     {
-        if (YII_ENV === 'test' || mb_strpos($toEmail, '@example.org') !== false) {
+        if (YII_ENV === 'test' || str_contains($toEmail, '@example.org')) {
             return EMailLog::STATUS_SKIPPED_OTHER;
         }
         if (EMailBlocklist::isBlocked($toEmail)) {
@@ -125,7 +125,7 @@ abstract class Base
         } catch (TransportExceptionInterface $e) {
             $fallbackTransport = $this->getFallbackTransport();
             // "Expected response code 220 but got an empty response" is triggered is regular sendmail is not accessible
-            if ($fallbackTransport && strpos($e->getMessage(), 'Expected response code 220') !== false) {
+            if ($fallbackTransport && str_contains($e->getMessage(), 'Expected response code 220')  ) {
                 $sentMessage = $fallbackTransport->send($message);
 
                 return $sentMessage->getMessageId();

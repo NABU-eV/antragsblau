@@ -25,10 +25,8 @@ class UserController extends Controller
 
     private function findUserByAuth(string $auth): ?User
     {
-        if (mb_strpos($auth, ':') === false) {
-            if (mb_strpos($auth, '@') !== false) {
-                $auth = 'email:' . $auth;
-            }
+        if (!str_contains($auth, ':') && str_contains($auth, '@')) {
+            $auth = 'email:' . $auth;
         }
         return User::findOne(['auth' => $auth]);
     }
@@ -117,7 +115,7 @@ class UserController extends Controller
             $user->link('userGroups', $toUserGroup);
         }
 
-        $this->stdout('Created the user');
+        $this->stdout('Created the user: ' . $user->auth . "\n");
 
         if ($welcomeTemplate) {
             \Yii::$app->urlManager->setBaseUrl("/");
