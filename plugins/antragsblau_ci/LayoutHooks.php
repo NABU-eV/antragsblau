@@ -13,6 +13,13 @@ use yii\web\View;
 class LayoutHooks extends Hooks
 {
 
+    public function endOfHead(string $before): string
+    {
+        $before .= '<script> var require={urlArgs: "version=' . ANTRAGSGRUEN_VERSION . '"};</script>';
+
+        return $before;
+    }
+
     public function beforePage(string $before): string
     {
         return '<div class="header_wrap">
