@@ -67,7 +67,7 @@ $config = [
      * When specified as a relative path, this is relative to the SimpleSAMLphp
      * root directory.
      */
-    //'loggingdir' => '/var/log/',
+    'loggingdir'      => '../../../runtime/logs/',
     //'datadir' => '/var/data/',
     'tempdir'                      => '/tmp/simplesaml',
 
@@ -316,8 +316,8 @@ $config = [
      * When 'errorreporting' is enabled, a form will be presented for the user to report
      * the error to 'technicalcontact_email'.
      */
-    'showerrors'                   => true,
-    'errorreporting'               => true,
+    'showerrors'      => env('SAML2_SHOW_ERRORS', true),
+    'errorreporting'  => false,
 
     /*
      * Custom error show function called from SimpleSAML\Error\Error::show.
@@ -349,7 +349,7 @@ $config = [
      * loggingdir above to 'null'.
      */
     'logging.level'                => SimpleSAML\Logger::NOTICE,
-    'logging.handler'              => 'syslog',
+    'logging.handler' => 'file',
 
     /*
      * Specify the format of the logs. Its use varies depending on the log handler used (for instance, you cannot
@@ -563,7 +563,7 @@ $config = [
     /*
      * Sets the duration, in seconds, auth state should be stored.
      */
-    'session.state.timeout'         => (60 * 60), // 1 hour
+    'session.state.timeout' => 3 * (60 * 60), // 3 hours.
 
     /*
      * Option to override the default settings for the session cookie name
@@ -631,7 +631,7 @@ $config = [
     /*
      * Options to override the default settings for php sessions.
      */
-    'session.phpsession.cookiename' => 'SimpleSAML',
+    'session.phpsession.cookiename' => 'PHPSESSID',
     'session.phpsession.savepath'   => null,
     'session.phpsession.httponly'   => true,
 
