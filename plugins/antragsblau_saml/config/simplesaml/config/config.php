@@ -563,7 +563,7 @@ $config = [
     /*
      * Sets the duration, in seconds, auth state should be stored.
      */
-    'session.state.timeout'         => (60 * 60), // 1 hour
+    'session.state.timeout' => 3 * (60 * 60), // 3 hours.
 
     /*
      * Option to override the default settings for the session cookie name
