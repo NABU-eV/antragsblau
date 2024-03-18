@@ -22,12 +22,16 @@ class LayoutHooks extends Hooks
 
     public function beforePage(string $before): string
     {
+        /** @var Base $controller */
+        $controller = RequestContext::getWebApplication()->controller;
+        $assetBundle = reset($controller->view->assetBundles);
+        $assetUrl = $assetBundle->baseUrl;
         return '<div class="header_wrap">
                     <div class="container">
                         <div class="logo">
                             <a href="/" class="homeLinkLogo">
                                 <span class="sr-only">Zur Startseite</span>
-                                <span class="logoImg"></span>
+                                <img class="logoImg" src="' . $assetUrl . '/NABUAntragsblau-logo.png" alt="Logo">
                             </a>
                         </div>'
             . $this->getMenu() .
@@ -69,9 +73,9 @@ class LayoutHooks extends Hooks
         $assetBundle = reset($controller->view->assetBundles);
         $faviconBase = $assetBundle->baseUrl;
 
-        return '<link rel="apple-touch-icon" sizes="180x180" href="' . $faviconBase . '/antragsblau-logo.png">
-<link rel="icon" type="image/png" sizes="32x32" href="' . $faviconBase . '/antragsblau-logo.png">
-<link rel="icon" type="image/png" sizes="16x16" href="' . $faviconBase . '/antragsblau-logo.png">
+        return '<link rel="apple-touch-icon" sizes="180x180" href="' . $faviconBase . '/NABUAntragsblau-logo.png">
+<link rel="icon" type="image/png" sizes="32x32" href="' . $faviconBase . '/NABUAntragsblau-logo.png">
+<link rel="icon" type="image/png" sizes="16x16" href="' . $faviconBase . '/NABUAntragsblau-logo.png">
 <link rel="mask-icon" href="' . $faviconBase . '/safari-pinned-tab.svg" color="#3bb030">
 <meta name="theme-color" content="#ffffff">';
     }
