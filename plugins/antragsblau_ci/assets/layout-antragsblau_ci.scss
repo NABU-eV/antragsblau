@@ -148,12 +148,9 @@ body {
 }
 
 .breadcrumb_wrap .container {
-  margin-bottom: 4.4em;
+  margin-bottom: 1.4em;
   margin-top: 5px;
-
-  nav {
-    margin-left: 130px;
-  }
+  padding-left: 0;
 }
 
 .logo {
@@ -164,23 +161,20 @@ body {
     text-shadow: 1px 1px 5px rgba(0, 0, 0, 0.3);
   }
 
-  width: 130px;
-  height: 151px;
-  margin-top: 0;
-  display: block;
-  margin-bottom: 0;
+  //width: 130px;
+  //height: 151px;
+  //margin-top: 0;
+  display: flex;
+  align-items: center;
+  //margin-bottom: 0;
   z-index: 3;
   margin-left: -15px;
-  position: absolute;
-  top: 0;
+  //position: absolute;
+  //top: 0;
 }
 
 .logoImg {
-  display: block;
-  width: 130px;
-  height: 151px;
-  background-image: url(antragsblau-logo.png);
-  background-size: contain;
+  height: 30px;
 }
 
 .header_wrap {
@@ -193,7 +187,6 @@ body {
 
 .navwrap {
   margin-right: -15px;
-  margin-left: 116px;
 }
 
 .antragsgruen-width-main {
@@ -296,7 +289,7 @@ a:hover {
   display: block;
   z-index: 2;
   position: relative;
-  padding: 0.3em 1em;
+  padding: 0.3em;
   font-size: 14.4px;
   font-family: "Source Sans Pro", Trebuchet, Helvetica Neue, Helvetica, Arial, Verdana, sans-serif;
   font-weight: 300;
