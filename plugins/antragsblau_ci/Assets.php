@@ -14,7 +14,8 @@ class Assets extends AssetBundle
     ];
 
     public $js = [
-        'custom.js'
+        'custom.js',
+        'matomoTag.js',
     ];
 
     public $depends = [
