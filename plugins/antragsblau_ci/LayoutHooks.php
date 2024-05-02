@@ -73,9 +73,9 @@ class LayoutHooks extends Hooks
         $assetBundle = reset($controller->view->assetBundles);
         $faviconBase = $assetBundle->baseUrl;
 
-        return '<link rel="apple-touch-icon" sizes="180x180" href="' . $faviconBase . '/NABUAntragsblau-logo.png">
-<link rel="icon" type="image/png" sizes="32x32" href="' . $faviconBase . '/NABUAntragsblau-logo.png">
-<link rel="icon" type="image/png" sizes="16x16" href="' . $faviconBase . '/NABUAntragsblau-logo.png">
+        return '<link rel="apple-touch-icon" sizes="180x180" href="' . $faviconBase . '/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="' . $faviconBase . '/favicon.ico">
+<link rel="icon" type="image/png" sizes="16x16" href="' . $faviconBase . '/favicon.ico">
 <link rel="mask-icon" href="' . $faviconBase . '/safari-pinned-tab.svg" color="#3bb030">
 <meta name="theme-color" content="#ffffff">';
     }
