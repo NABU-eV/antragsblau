@@ -26,7 +26,15 @@ class LayoutHooks extends Hooks
         $controller = RequestContext::getWebApplication()->controller;
         $assetBundle = reset($controller->view->assetBundles);
         $assetUrl = $assetBundle->baseUrl;
-        return '<div class="header_wrap">
+
+        return '
+<div class="back-nn"
+     style="font-size: 16px; left: 0px; right: 0px; margin: auto; width: 100%; justify-content: left; column-gap: 1rem; font-weight: 500; --tw-text-opacity: 1; color: rgb(255 255 255 / var(--tw-text-opacity)); display: flex; text-decoration: underline; padding: 10px 0px 10px 20px; height: 32px; align-items: center; background-color: rgb(1, 53, 96); z-index: 1;">
+    <a class="underline" href="https://www.nabu-netz.de" style="color: white;">
+        Zurück zum NABU-Netz
+    </a>
+</div>
+<div class="header_wrap">
                     <div class="container">
                         <div class="logo">
                             <a href="/" class="homeLinkLogo">
@@ -161,6 +169,37 @@ class LayoutHooks extends Hooks
             }
             $out .= '</ol></nav>';
         }
+
+        return $out;
+    }
+
+    public function footerLine(string $before): string
+    {
+        $out = '<footer class="footer" aria-label="' . \Yii::t('base', 'aria_footer') . '">';
+
+        if (! defined('INSTALLING_MODE') || INSTALLING_MODE !== true) {
+            $legalLink = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'legal']);
+            $privacyLink = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'privacy']);
+
+            $out .= '<a href="' . Html::encode($legalLink) . '" class="legal" id="legalLink">' .
+                \Yii::t('base', 'imprint') . '</a>
+            <a href="' . Html::encode($privacyLink) . '" class="privacy" id="privacyLink">' .
+                \Yii::t('base', 'privacy_statement') . '</a>';
+        }
+
+        $out .= '<span class="version">';
+        if (\Yii::$app->language === 'de') {
+            $ariaVersion = str_replace('%VERSION%', ANTRAGSGRUEN_VERSION, \Yii::t('base', 'aria_version_hint'));
+            $out .= 'Version ' .
+                Html::a(Html::encode(ANTRAGSGRUEN_VERSION), ANTRAGSGRUEN_HISTORY_URL, ['aria-label' => $ariaVersion]);
+        } else {
+            $ariaVersion = str_replace('%VERSION%', ANTRAGSGRUEN_VERSION, \Yii::t('base', 'aria_version_hint'));
+            $out .= 'Version ' .
+                Html::a(Html::encode(ANTRAGSGRUEN_VERSION), ANTRAGSGRUEN_HISTORY_URL, ['aria-label' => $ariaVersion]);
+        }
+        $out .= '</span>';
+
+        $out .= '</footer>';
 
         return $out;
     }
