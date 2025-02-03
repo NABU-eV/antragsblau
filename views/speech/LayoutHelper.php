@@ -2,13 +2,14 @@
 
 namespace app\views\speech;
 
+use app\components\IMotionStatusFilter;
 use app\components\UrlHelper;
 use app\models\db\{Consultation, IMotion, Motion, SpeechQueue};
 use yii\helpers\Html;
 
 class LayoutHelper
 {
-    private static function addQueueToSidebar(SpeechQueue $speechQueue, ?IMotion $motion, string &$mainHtml, string &$miniHtml, SpeechQueue $selectedQueue)
+    private static function addQueueToSidebar(SpeechQueue $speechQueue, ?IMotion $motion, string &$mainHtml, string &$miniHtml, SpeechQueue $selectedQueue): void
     {
         if ($speechQueue->isActive) {
             $mainHtml .= '<li class="active">';
@@ -42,7 +43,8 @@ class LayoutHelper
                 static::addQueueToSidebar($speechQueue, null, $html, $miniHtml, $currentQueue);
             }
         }
-        foreach ($consultation->getVisibleIMotionsSorted() as $motion) {
+        $filter = IMotionStatusFilter::onlyUserVisible($consultation, true);
+        foreach ($filter->getFilteredConsultationIMotionsSorted() as $motion) {
             foreach ($consultation->speechQueues as $speechQueue) {
                 if ($speechQueue->motionId === $motion->id) {
                     static::addQueueToSidebar($speechQueue, $motion, $html, $miniHtml, $currentQueue);

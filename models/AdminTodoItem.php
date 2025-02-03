@@ -6,7 +6,7 @@ namespace app\models;
 
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
 use app\components\{HashedStaticCache, MotionSorter, Tools, UrlHelper};
-use app\models\db\{Amendment, AmendmentComment, Consultation, IMotion, Motion, MotionComment, User};
+use app\models\db\{Amendment, AmendmentComment, Consultation, IMotion, Motion, MotionComment, repostory\MotionRepository, User};
 
 class AdminTodoItem
 {
@@ -68,7 +68,7 @@ class AdminTodoItem
      */
     private static function addScreeningMotionsItems(Consultation $consultation, array $todo): array
     {
-        $motions = Motion::getScreeningMotions($consultation);
+        $motions = MotionRepository::getScreeningMotions($consultation);
         foreach ($motions as $motion) {
             if (!User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, PrivilegeQueryContext::motion($motion))) {
                 continue;
@@ -201,10 +201,35 @@ class AdminTodoItem
         return $todo;
     }
 
+    private static function getTodoUsersCache(?Consultation $consultation): HashedStaticCache
+    {
+        return HashedStaticCache::getInstance('getTodoUsersCache', [$consultation?->id]);
+    }
+
+    private static function addUserToTodoCache(?Consultation $consultation, ?User $user): void
+    {
+        $cache = self::getTodoUsersCache($consultation);
+        $users = $cache->getCached(function() { return []; });
+        if (!in_array($user?->id, $users)) {
+            $users[] = $user?->id;
+            $cache->setCache($users);
+        }
+    }
+
+    private static function getTodoCache(?Consultation $consultation, ?int $userId): HashedStaticCache
+    {
+        $cache = HashedStaticCache::getInstance('getConsultationTodoCount', [$userId, $consultation?->id]);
+        if (AntragsgruenApp::getInstance()->viewCacheFilePath) {
+            $cache->setIsSynchronized(true);
+        }
+
+        return $cache;
+    }
+
     /**
      * @return AdminTodoItem[]
      */
-    public static function getConsultationTodos(?Consultation $consultation): array
+    public static function getConsultationTodos(?Consultation $consultation, bool $setCache): array
     {
         if (!$consultation) {
             return [];
@@ -229,27 +254,53 @@ class AdminTodoItem
 
         self::$todoCache[$consultation->id] = $todo;
 
-        $cachedCount = HashedStaticCache::getCache('getConsultationTodoCount', [User::getCurrentUser()?->id]);
-        if ($cachedCount !== count($todo)) {
-            HashedStaticCache::setCache('getConsultationTodoCount', [User::getCurrentUser()?->id], count($todo), 30);
+        if ($setCache) {
+            // Only set the cache
+            $cache = self::getTodoCache($consultation, User::getCurrentUser()?->id);
+            $cache->flushCache();
+            $cache->setTimeout(30);
+            $cache->getCached(function () use ($todo) {
+                return count($todo);
+            });
         }
 
         return $todo;
     }
 
-    public static function getConsultationTodoCount(?Consultation $consultation): int
+    public static function getConsultationTodoCount(?Consultation $consultation, bool $onlyIfExists): ?int
     {
-        $count = HashedStaticCache::getCache('getConsultationTodoCount', [User::getCurrentUser()?->id]);
-        if ($count === false) {
-            $count = count(static::getConsultationTodos($consultation));
-            HashedStaticCache::setCache('getConsultationTodoCount', [User::getCurrentUser()?->id], $count, 30);
+        $cache = self::getTodoCache($consultation, User::getCurrentUser()?->id);
+        $cache->setTimeout(5 * 60);
+
+        // For large consultations (identified by having a view cache), load the list asynchronously.
+        // Downside: a bit shaky layout when loading. For smaller consultations, it's not worth the tradeoff.
+        if ($onlyIfExists && AntragsgruenApp::getInstance()->viewCacheFilePath && !$cache->cacheIsFilled()) {
+            return null;
         }
-        return $count;
+
+        return $cache->getCached(function () use ($consultation) {
+            self::addUserToTodoCache($consultation, User::getCurrentUser());
+            return count(self::getConsultationTodos($consultation, false));
+        });
     }
 
-    public static function flushConsultationTodoCount(): void
+    public static function flushConsultationTodoCount(?Consultation $consultation): void
     {
-        HashedStaticCache::flushCache('getConsultationTodoCount', [User::getCurrentUser()?->id]);
+        $cache = self::getTodoUsersCache($consultation);
+        $users = $cache->getCached(function() { return []; });
+        $cache->setCache([]);
+        if (!in_array(User::getCurrentUser()?->id, $users)) {
+            $users[] = User::getCurrentUser()?->id;
+        }
+        foreach ($users as $userId) {
+            self::flushUserTodoCount($consultation, $userId);
+        }
+    }
+
+    public static function flushUserTodoCount(?Consultation $consultation, ?int $userId): void
+    {
+        $cache = self::getTodoCache($consultation, $userId);
+        $cache->flushCache();
     }
 
     /**
@@ -260,7 +311,7 @@ class AdminTodoItem
     public static function getTodosForIMotion(IMotion $IMotion): array
     {
         return array_values(array_filter(
-            self::getConsultationTodos($IMotion->getMyConsultation()),
+            self::getConsultationTodos($IMotion->getMyConsultation(), true),
             fn(AdminTodoItem $item): bool => $item->isForIMotion($IMotion)
         ));
     }

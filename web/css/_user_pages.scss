@@ -22,13 +22,85 @@
   }
 }
 
+.secondFactorAdderBody {
+  .setFaField {
+    margin-left: 30px;
+    margin-bottom: 50px;
+  }
+  .captchaForm {
+    margin-left: 30px;
+    margin-bottom: 50px;
+    margin-top: -20px;
+  }
+ }
+
+.captchaHolder {
+  input.form-control {
+    display: inline-block;
+    width: 200px;
+  }
+}
+
+#usernamePasswordForm, #confirmAccountForm {
+  @media (min-width: $screenMinWith) {
+    width: 400px;
+  }
+}
+#confirmAccountForm {
+  .inputHolder {
+    margin-bottom: 15px;
+  }
+  .saveResetRow {
+    overflow: auto;
+    .save {
+      float: left;
+    }
+    .resend {
+      float: right;
+      button {
+        font-weight: normal;
+        font-size: 0.8em;
+        font-style: italic;
+      }
+    }
+  }
+}
+
+#conPwdForm {
+  @media (min-width: $screenMinWith) {
+    width: 400px;
+  }
+
+  .consultationName {
+    margin-bottom: 30px;
+  }
+  .usernameLoginOpener button {
+    margin-top: 20px;
+    font-weight: normal;
+  }
+}
+
 .loginUsername {
   .passwordRecovery {
-    text-align: right;
+    float: right;
     font-size: 0.8em;
   }
   #regConfirmation {
     font-size: 11px;
+  }
+}
+
+.accountDeleteForm .submit {
+  display: flex;
+  width: 100%;
+
+  label {
+    font-weight: normal;
+    flex-basis: 50%;
+  }
+  > div {
+    flex-basis: 50%;
+    text-align: right;
   }
 }
 
@@ -48,6 +120,16 @@
   .resendButton {
     color: $colorLinks;
     font-style: italic;
+  }
+  .btn2FaRemoveOpen {
+    padding: 0;
+    font-weight: normal;
+    font-style: italic;
+    font-size: 0.8em;
+    margin-left: 16px;
+  }
+  .secondFactorRemoveBody {
+    margin-top: 10px;
   }
 }
 

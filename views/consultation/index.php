@@ -1,17 +1,20 @@
 <?php
 
-use app\models\db\{Amendment, AmendmentSupporter, Motion, MotionSupporter, User};
-use app\components\{MotionSorter, UrlHelper};
+use app\models\db\{Amendment, AmendmentComment, AmendmentSupporter, Consultation, Motion, MotionComment, MotionSupporter, User};
+use app\components\{HashedStaticCache, MotionSorter, UrlHelper};
 use app\models\settings\{Privileges, Consultation as ConsultationSettings};
 use yii\helpers\Html;
 
 /**
  * @var yii\web\View $this
- * @var \app\models\db\Consultation $consultation
+ * @var Consultation $consultation
  * @var Motion[] $motions
  * @var User|null $myself
  * @var MotionSupporter[] $myMotions
  * @var AmendmentSupporter[] $myAmendments
+ * @var MotionComment[] $myMotionComments
+ * @var AmendmentComment[] $myAmendmentComments
+ * @var HashedStaticCache $cache
  */
 
 /** @var \app\controllers\ConsultationController $controller */
@@ -31,10 +34,10 @@ echo '<h1>' . Html::encode($consultation->title) . '</h1>';
 
 echo $layout->getMiniMenu('sidebarSmall');
 
+echo $controller->showErrors();
+
 echo $this->render('_index_welcome_content', ['consultation' => $consultation]);
 echo $this->render('_index_phases_progress', ['consultation' => $consultation]);
-
-echo $controller->showErrors();
 
 $getMyMotionAttrs = function (\app\models\db\IMotion $motion, \app\models\db\ISupporter $supporter) {
     $class = [];
@@ -140,23 +143,37 @@ if ($consultation->getSettings()->hasSpeechLists) {
 echo $this->render('@app/views/voting/_index_voting', ['assignedToMotion' => null]);
 
 
-$resolutionMode = $consultation->getSettings()->startLayoutResolutions;
-list($imotions, $resolutions) = MotionSorter::getIMotionsAndResolutions($consultation->motions);
-if (count($resolutions) > 0 && $resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_ABOVE) {
-    echo $this->render('_index_resolutions', ['consultation' => $consultation, 'resolutions' => $resolutions]);
+if ($contentAdmin && in_array($consultation->getSettings()->startLayoutType, [ConsultationSettings::START_LAYOUT_AGENDA_LONG, ConsultationSettings::START_LAYOUT_AGENDA_HIDE_AMEND, ConsultationSettings::START_LAYOUT_AGENDA])) {
+    $cache->setSkipCache(true);
 }
 
-if (count($consultation->motionTypes) > 0 && $consultation->getSettings()->getStartLayoutView()) {
-    if ($resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT) {
-        $toShowImotions = $resolutions;
-    } else {
-        $toShowImotions = $imotions;
+echo $cache->getCached(function () use ($consultation, $layout, $contentAdmin) {
+    $output = '';
+    $resolutionMode = $consultation->getSettings()->startLayoutResolutions;
+    list($imotions, $resolutions) = MotionSorter::getIMotionsAndResolutions($consultation->motions);
+    if (count($resolutions) > 0 && $resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_ABOVE) {
+        $output .= $this->render('_index_resolutions', ['consultation' => $consultation, 'resolutions' => $resolutions]);
     }
-    echo $this->render($consultation->getSettings()->getStartLayoutView(), [
-        'consultation' => $consultation,
-        'layout' => $layout,
-        'admin' => $contentAdmin,
-        'imotions' => $toShowImotions,
-        'isResolutionList' => ($resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT),
-    ]);
-}
+
+    if (count($consultation->motionTypes) > 0 && $consultation->getSettings()->getStartLayoutView()) {
+        if ($resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT) {
+            $toShowImotions = $resolutions;
+        } else {
+            $toShowImotions = $imotions;
+        }
+        $output .= $this->render($consultation->getSettings()->getStartLayoutView(), [
+            'consultation' => $consultation,
+            'layout' => $layout,
+            'admin' => $contentAdmin,
+            'imotions' => $toShowImotions,
+            'isResolutionList' => ($resolutionMode === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT),
+            'skipTitle' => false,
+        ]);
+    }
+    return $output;
+});
+
+echo $this->render('_index_private_comment_list', [
+    'myMotionComments' => $myMotionComments,
+    'myAmendmentComments' => $myAmendmentComments,
+]);

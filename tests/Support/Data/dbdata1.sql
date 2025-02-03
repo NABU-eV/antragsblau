@@ -958,21 +958,21 @@ VALUES
 
 INSERT INTO `###TABLE_PREFIX###consultationMotionType` (`id`, `consultationId`, `titleSingular`, `titlePlural`, `createTitle`, `sidebarCreateButton`, `motionPrefix`, `position`, `settings`, `amendmentsOnly`, `pdfLayout`, `texTemplateId`, `deadlines`, `policyMotions`, `policyAmendments`, `policyComments`, `policySupportMotions`, `policySupportAmendments`, `initiatorsCanMergeAmendments`, `motionLikesDislikes`, `amendmentLikesDislikes`, `supportTypeMotions`, `supportTypeAmendments`, `amendmentMultipleParagraphs`, `status`, `layoutTwoCols`)
 VALUES
-(1, 1, 'Antrag', 'Anträge', 'Antrag stellen', 1, 'A', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"motionTitleIntro\": \"\",\n    \"hasProposedProcedure\": true\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0, \"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(3, 2, 'Antrag', 'Anträge', 'Antrag stellen', 0, 'A', 2, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(4, 2, 'Bewerbung', 'Bewerbungen', 'Bewerben', 0, 'B', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 1\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(5, 3, 'Antrag', 'Anträge', 'Antrag stellen', 0, NULL, 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(6, 3, 'Bewerbung', 'Bewerbungen', 'Bewerben', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 1\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 1, 0, 0, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true}', null, 1, 0, 0),
-(7, 4, 'Antrag', 'Anträge', 'Antrag stellen', 1, NULL, 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 2, 2, 2, 0, 0, 0, 0, 0, '{\"type\":1,\"hasResolutionDate\":2,\"minSupporters\":19,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(8, 5, 'Antrag', 'Anträge', 'Antrag stellen', 1, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 1, 1, '{\"amendments\":[],\"motions\":[]}', 2, 2, 2, 0, 0, 0, 0, 0, '{\"type\":1,\"hasResolutionDate\":2,\"minSupporters\":19,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(9, 6, 'Antrag', 'Anträge', 'Antrag stellen', 1, NULL, 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"motionTitleIntro\": \"\",\n    \"hasProposedProcedure\": true\n}', 0, 1, 1, '{\"amendments\":[],\"motions\":[]}', 2, 2, 2, 0, 0, 0, 0, 0, '{\"type\":1,\"hasResolutionDate\":2,\"minSupporters\":19,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(10, 7, 'Antrag', 'Anträge', 'Antrag stellen', 1, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 2, 2, 0, 2, 0, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":1,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(11, 8, 'Discussion', 'Discussions', 'Start a discussion', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', -1, -1, 2, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(12, 9, 'Discussion', 'Discussions', 'Start a discussion', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', -1, -1, 2, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(13, 10, 'Discussion', 'Discussions', 'Start a discussion', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', -1, -1, 2, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
-(14, 8, 'Petition', 'Petitions', 'Start a petition', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 0, 0, 2, -1, 2, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":2,\"allowMoreSupporters\":true,\"skipForOrganizations\":true,\"hasOrganizations\":false}',null,  1, 0, 0),
-(15, 9, 'Petition', 'Petitions', 'Start a petition', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 0, 0, 2, -1, 2, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":1,\"allowMoreSupporters\":true,\"skipForOrganizations\":true,\"hasOrganizations\":false}', null, 1, 0, 0),
-(16, 10, 'Petition', 'Petitions', 'Start a petition', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, 1, '{\"amendments\":[],\"motions\":[]}', 0, 0, 2, -1, 2, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":1,\"allowMoreSupporters\":true,\"skipForOrganizations\":true,\"hasOrganizations\":false}', null, 1, 0, 0);
+(1, 1, 'Antrag', 'Anträge', 'Antrag stellen', 1, 'A', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"motionTitleIntro\": \"\",\n    \"hasProposedProcedure\": true\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0, \"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(3, 2, 'Antrag', 'Anträge', 'Antrag stellen', 0, 'A', 2, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(4, 2, 'Bewerbung', 'Bewerbungen', 'Bewerben', 0, 'B', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 1\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(5, 3, 'Antrag', 'Anträge', 'Antrag stellen', 0, NULL, 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 1, 1, 1, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(6, 3, 'Bewerbung', 'Bewerbungen', 'Bewerben', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 1\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 1, 0, 0, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true}', null, 1, 0, 0),
+(7, 4, 'Antrag', 'Anträge', 'Antrag stellen', 1, NULL, 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 2, 2, 2, 0, 0, 0, 0, 0, '{\"type\":1,\"hasResolutionDate\":2,\"minSupporters\":19,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(8, 5, 'Antrag', 'Anträge', 'Antrag stellen', 1, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 1, NULL, '{\"amendments\":[],\"motions\":[]}', 2, 2, 2, 0, 0, 0, 0, 0, '{\"type\":1,\"hasResolutionDate\":2,\"minSupporters\":19,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(9, 6, 'Antrag', 'Anträge', 'Antrag stellen', 1, NULL, 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"motionTitleIntro\": \"\",\n    \"hasProposedProcedure\": true\n}', 0, 1, NULL, '{\"amendments\":[],\"motions\":[]}', 2, 2, 2, 0, 0, 0, 0, 0, '{\"type\":1,\"hasResolutionDate\":2,\"minSupporters\":19,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(10, 7, 'Antrag', 'Anträge', 'Antrag stellen', 1, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 2, 2, 0, 2, 0, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":1,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(11, 8, 'Discussion', 'Discussions', 'Start a discussion', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', -1, -1, 2, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(12, 9, 'Discussion', 'Discussions', 'Start a discussion', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', -1, -1, 2, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(13, 10, 'Discussion', 'Discussions', 'Start a discussion', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', -1, -1, 2, 0, 0, 0, 0, 0, '{\"type\":0,\"hasResolutionDate\":2,\"hasOrganizations\":true,\"allowMoreSupporters\":true}', null, 1, 0, 0),
+(14, 8, 'Petition', 'Petitions', 'Start a petition', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 0, 0, 2, -1, 2, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":2,\"allowMoreSupporters\":true,\"skipForOrganizations\":true,\"hasOrganizations\":false}',null,  1, 0, 0),
+(15, 9, 'Petition', 'Petitions', 'Start a petition', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 0, 0, 2, -1, 2, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":1,\"allowMoreSupporters\":true,\"skipForOrganizations\":true,\"hasOrganizations\":false}', null, 1, 0, 0),
+(16, 10, 'Petition', 'Petitions', 'Start a petition', 0, '', 0, '{\n    \"pdfIntroduction\": \"\",\n    \"cssIcon\": null,\n    \"layoutTwoCols\": 0\n}', 0, 0, NULL, '{\"amendments\":[],\"motions\":[]}', 0, 0, 2, -1, 2, 0, 4, 4, '{\"type\":2,\"hasResolutionDate\":2,\"minSupporters\":1,\"allowMoreSupporters\":true,\"skipForOrganizations\":true,\"hasOrganizations\":false}', null, 1, 0, 0);
 
 
 --
@@ -1104,7 +1104,8 @@ INSERT INTO `###TABLE_PREFIX###consultationUserGroup` (`id`, `externalId`, `temp
 (35, NULL, 4, 'Participant', 9, 8, 1, ''),
 (36, NULL, 2, 'Consultation admin', 10, 8, 1, 'admin-all'),
 (37, NULL, 3, 'Proposed procedure', 10, 8, 1, 'proposed-procedure'),
-(38, NULL, 4, 'Participant', 10, 8, 1, '');
+(38, NULL, 4, 'Participant', 10, 8, 1, ''),
+(39, NULL, 5, 'Progress Report', 1, 1, 1, '{"privileges":[{"motionTypeId":null,"agendaItemId":null,"tagId":null,"privileges":[14]}]}');
 
 --
 -- Dumping data for table `userGroup`
@@ -1127,7 +1128,8 @@ INSERT INTO `###TABLE_PREFIX###userGroup` (`userId`, `groupId`) VALUES
 (6, 25),
 (6, 33),
 (7, 2),
-(8, 3);
+(8, 3),
+(9, 39);
 
 --
 -- Dumping data for table `motion`
@@ -1617,7 +1619,11 @@ VALUES
    0x33663062343836336632393839643866383961396162386532626133336232363465373065663361000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
    NULL, NULL, NULL, NULL),
   (8, 'Proposal Admin', NULL, NULL, NULL, '', 0, 'proposaladmin@example.org', 1, 'email:proposaladmin@example.org',
-      '2017-07-30 04:43:28', 0, '$2y$10$ZF8nUFU9nHGc9hENgC5LW.BqncyUy4NiuD3.46u2p5RZK8g59ebYC',
+   '2017-07-30 04:43:28', 0, '$2y$10$ZF8nUFU9nHGc9hENgC5LW.BqncyUy4NiuD3.46u2p5RZK8g59ebYC',
+   0x31413832615f4f39364a54446c497355664b35354c43483957786664564831580000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
+   NULL, NULL, NULL, NULL),
+  (9, 'Progress report admin', NULL, NULL, NULL, '', 0, 'progress@example.org', 1, 'email:progress@example.org',
+   '2017-07-30 04:43:28', 0, '$2y$10$ZF8nUFU9nHGc9hENgC5LW.BqncyUy4NiuD3.46u2p5RZK8g59ebYC',
    0x31413832615f4f39364a54446c497355664b35354c43483957786664564831580000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000,
    NULL, NULL, NULL, NULL);
 

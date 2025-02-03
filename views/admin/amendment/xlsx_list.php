@@ -1,18 +1,16 @@
 <?php
 
 use app\components\HTMLTools;
-use app\models\db\{AmendmentSection, Motion};
-use app\models\sectionTypes\ISectionType;
-use app\models\sectionTypes\TextSimple;
+use app\models\db\{Amendment, AmendmentSection, Motion};
+use app\models\sectionTypes\{ISectionType, TextSimpleCommon};
 use app\models\supportTypes\SupportBase;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use yii\helpers\Html;
 
 /**
- * @var $this yii\web\View
- * @var Motion[] $motions
- * @var bool $withdrawn
+ * @var yii\web\View $this
+ * @var array<array{motion: Motion, amendments: Amendment[]}> $amendments
  */
 
 /** @var \app\controllers\Base $controller */
@@ -36,7 +34,8 @@ $hasAgendaItems = false;
 $hasResponsibilities = false;
 $hasLikes = false;
 $hasDislikes = false;
-foreach ($motions as $motion) {
+foreach ($amendments as $amendmentGroup) {
+    $motion = $amendmentGroup['motion'];
     if ($motion->getMyMotionType()->amendmentsOnly) {
         continue;
     }
@@ -151,7 +150,8 @@ $sheet->getStyle('A1:' . $LAST_COL . '2')->applyFromArray([
 $row = 3;
 $htmlHelper = new PhpOffice\PhpSpreadsheet\Helper\Html();
 
-foreach ($motions as $motion) {
+foreach ($amendments as $amendmentGroup) {
+    $motion = $amendmentGroup['motion'];
     if ($motion->getMyMotionType()->amendmentsOnly) {
         continue;
     }
@@ -185,8 +185,7 @@ foreach ($motions as $motion) {
         $sheet->setCellValue($COL_RESPONSIBILITY . $row, implode(', ', $responsibility));
     }
 
-    $amendments = $motion->getVisibleAmendmentsSorted($withdrawn);
-    foreach ($amendments as $amendment) {
+    foreach ($amendmentGroup['amendments'] as $amendment) {
         $row++;
 
         // $sheet->getRowDimension($row)->setRowHeight(5, 'cm');
@@ -246,7 +245,7 @@ foreach ($motions as $motion) {
                 $lineLength   = $section->getCachedConsultation()->getSettings()->lineLength;
                 $originalData = $section->getOriginalMotionSection()->getData();
                 $newData      = $section->getData();
-                $proposal     .= TextSimple::formatAmendmentForOds($originalData, $newData, $firstLine, $lineLength);
+                $proposal     .= TextSimpleCommon::formatAmendmentForOds($originalData, $newData, $firstLine, $lineLength);
             }
         }
         $sheet->setCellValue($COL_PROCEDURE . $row, $htmlHelper->toRichTextObject($proposal));

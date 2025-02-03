@@ -2,8 +2,9 @@
 
 namespace app\models\db;
 
+use app\models\db\repostory\MotionRepository;
 use app\models\settings\{IMotionStatusEngine, PrivilegeQueryContext, AntragsgruenApp};
-use app\components\{MotionSorter, UrlHelper};
+use app\components\UrlHelper;
 use app\models\amendmentNumbering\IAmendmentNumbering;
 use app\models\exceptions\{Internal, NotFound};
 use app\models\SearchResult;
@@ -77,6 +78,15 @@ class Consultation extends ActiveRecord
         ];
     }
 
+    public function refresh(): bool
+    {
+        $this->preloadedAllMotionData = null;
+        $this->preloadedAmendmentIds  = null;
+        MotionRepository::flushCaches();
+
+        return parent::refresh();
+    }
+
     public function getSite(): ActiveQuery
     {
         return $this->hasOne(Site::class, ['id' => 'siteId']);
@@ -126,6 +136,27 @@ class Consultation extends ActiveRecord
         $motions = [];
         foreach ($this->motions as $motion) {
             if ($motion->motionTypeId === $type->id) {
+                $motions[] = $motion;
+            }
+        }
+
+        return $motions;
+    }
+
+    /**
+     * @return Motion[]
+     */
+    public function getMotionsOfTag(ConsultationSettingsTag $tag): array
+    {
+        $motions = [];
+        foreach ($this->motions as $motion) {
+            $foundTag = false;
+            foreach ($motion->getPublicTopicTags() as $_tag) {
+                if ($_tag->id === $tag->id) {
+                    $foundTag = true;
+                }
+            }
+            if ($foundTag) {
                 $motions[] = $motion;
             }
         }
@@ -420,7 +451,7 @@ class Consultation extends ActiveRecord
         return $this->settingsObject;
     }
 
-    public function setSettings(?\app\models\settings\Consultation $settings)
+    public function setSettings(?\app\models\settings\Consultation $settings): void
     {
         $this->settingsObject = $settings;
         $this->settings = json_encode($settings, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
@@ -445,54 +476,6 @@ class Consultation extends ActiveRecord
         return $this->statusEngine;
     }
 
-    /**
-     * @return Motion[]
-     */
-    public function getVisibleMotions(bool $withdrawnAreVisible = true, bool $includeResolutions = true): array
-    {
-        $return            = [];
-        $invisibleStatuses = $this->getStatuses()->getInvisibleMotionStatuses($withdrawnAreVisible);
-        if (!$includeResolutions) {
-            $invisibleStatuses[] = IMotion::STATUS_RESOLUTION_PRELIMINARY;
-            $invisibleStatuses[] = IMotion::STATUS_RESOLUTION_FINAL;
-        }
-        foreach ($this->motions as $motion) {
-            if (!in_array($motion->status, $invisibleStatuses)) {
-                $return[] = $motion;
-            }
-        }
-        return $return;
-    }
-
-    /**
-     * @return IMotion[]
-     */
-    public function getVisibleIMotionsSorted(bool $includeWithdrawn = true): array
-    {
-        $motions   = [];
-        $motionIds = [];
-        $items     = ConsultationAgendaItem::getSortedFromConsultation($this);
-        foreach ($items as $agendaItem) {
-            $newMotions = MotionSorter::getSortedIMotionsFlat($this, $agendaItem->getVisibleIMotions($includeWithdrawn));
-            foreach ($newMotions as $newMotion) {
-                $motions[]   = $newMotion;
-                $motionIds[] = $newMotion->id;
-            }
-        }
-        $noAgendaMotions = [];
-        foreach ($this->getVisibleMotions($includeWithdrawn) as $motion) {
-            if ($motion->getMyMotionType()->amendmentsOnly) {
-                continue;
-            }
-            if (!in_array($motion->id, $motionIds)) {
-                $noAgendaMotions[] = $motion;
-                $motionIds[]       = $motion->id;
-            }
-        }
-        $noAgendaMotions = MotionSorter::getSortedIMotionsFlat($this, $noAgendaMotions);
-        return array_merge($motions, $noAgendaMotions);
-    }
-
     public function havePrivilege(int $privilege, ?PrivilegeQueryContext $context): bool
     {
         $user = User::getCurrentUser();
@@ -507,6 +490,7 @@ class Consultation extends ActiveRecord
         $this->link('userGroups', ConsultationUserGroup::createDefaultGroupConsultationAdmin($this));
         $this->link('userGroups', ConsultationUserGroup::createDefaultGroupProposedProcedure($this));
         $this->link('userGroups', ConsultationUserGroup::createDefaultGroupParticipant($this));
+        $this->link('userGroups', ConsultationUserGroup::createDefaultGroupProgressReport($this));
 
         foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
             $plugin::createDefaultUserGroups($this);
@@ -526,7 +510,13 @@ class Consultation extends ActiveRecord
             return $tag->type === $type;
         });
         usort($tags, function (ConsultationSettingsTag $tag1, ConsultationSettingsTag $tag2): int {
-            return $tag1->position <=> $tag2->position;
+            if ($tag1->position < $tag2->position) {
+                return -1;
+            }
+            if ($tag1->position > $tag2->position) {
+                return 1;
+            }
+            return strnatcasecmp($tag1->getNormalizedName(), $tag2->getNormalizedName());
         });
         return $tags;
     }
@@ -696,36 +686,6 @@ class Consultation extends ActiveRecord
         return null;
     }
 
-    public function getAgendaWithIMotions(): array
-    {
-        $ids    = [];
-        $result = [];
-        $addMotion = function (IMotion $motion) use (&$result) {
-            $result[] = $motion;
-            if (is_a($motion, Motion::class)) {
-                $result = array_merge($result, MotionSorter::getSortedAmendments($this, $motion->getVisibleAmendments()));
-            }
-        };
-
-        $items = ConsultationAgendaItem::getSortedFromConsultation($this);
-        foreach ($items as $agendaItem) {
-            $result[] = $agendaItem;
-            $motions  = MotionSorter::getSortedIMotionsFlat($this, $agendaItem->getVisibleIMotions());
-            foreach ($motions as $motion) {
-                $ids[] = $motion->id;
-                $addMotion($motion);
-            }
-        }
-        $result[] = null;
-
-        foreach ($this->getVisibleMotions() as $motion) {
-            if (!(in_array($motion->id, $ids) || count($motion->getVisibleReplacedByMotions()) > 0)) {
-                $addMotion($motion);
-            }
-        }
-        return $result;
-    }
-
     public function getAbsolutePdfLogo(): ?ConsultationFile
     {
         $logoUrl = $this->getSettings()->logoUrl;
@@ -738,7 +698,7 @@ class Consultation extends ActiveRecord
     public function getPdfLogoData(): array
     {
         if ($this->getSettings()->logoUrl) {
-            $file = ConsultationFile::findFileByUrl($this, $this->getSettings()->logoUrl);
+            $file = ConsultationFile::findFileByName($this, urldecode(basename($this->getSettings()->logoUrl)));
         } else {
             $file = null;
         }
@@ -781,7 +741,7 @@ class Consultation extends ActiveRecord
         $mails        = preg_split('/[,;]/', $this->adminEmail);
         $filtered     = [];
         foreach ($mails as $mail) {
-            if (trim($mail) !== '') {
+            if (filter_var(trim($mail), FILTER_VALIDATE_EMAIL)) {
                 $filtered[] = trim($mail);
             }
         }

@@ -63,12 +63,19 @@ class Diff
         $line    = static::normalizeForDiff($line);
         $htmlTag = '/(<br>\n+|<[^>]+>)/siu';
         $arr     = preg_split($htmlTag, $line, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($arr === false) {
+            throw new \RuntimeException('Failed to parse line: ' . $line);
+        }
         $out     = [];
         foreach ($arr as $arr2) {
             if (preg_match($htmlTag, $arr2)) {
                 $out[] = $arr2;
             } else {
-                foreach (preg_split('/([ \-.:])/', $arr2, -1, PREG_SPLIT_DELIM_CAPTURE) as $tok) {
+                $tokens = preg_split('/([ \-.:])/', $arr2, -1, PREG_SPLIT_DELIM_CAPTURE);
+                if ($tokens === false) {
+                    throw new \RuntimeException('Failed to parse line: ' . $arr2);
+                }
+                foreach ($tokens as $tok) {
                     if ($tok === ' ' || $tok === '-') {
                         if (count($out) == 0) {
                             $out[] = $tok;
@@ -410,8 +417,10 @@ class Diff
         if ($firstTag === false || $firstTag > $first) {
             return $first;
         }
-        /** @var string[] $parts */
         $parts = preg_split('/(<[^>]*>)/', $haystack, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($parts === false) {
+            throw new \RuntimeException('Failed to parse line: ' . $haystack);
+        }
         $pos   = 0;
         for ($i = 0; $i < count($parts); $i++) {
             if (($i % 2) === 0) {
@@ -437,8 +446,10 @@ class Diff
             return ['', $orig, $new, $diff, ''];
         }
 
-        /** @var string[] $parts */
-        $parts      = preg_split('/###(INS|DEL)_(START|END)###/siuU', $diff);
+        $parts = preg_split('/###(INS|DEL)_(START|END)###/siuU', $diff);
+        if ($parts === false) {
+            throw new \RuntimeException('Failed to parse line: ' . $diff);
+        }
         $prefix     = $parts[0];
         $postfix    = $parts[(int)count($parts) - 1];
         $prefixLen  = (int)grapheme_strlen($prefix);
@@ -537,58 +548,53 @@ class Diff
         $newParas = array_map(fn(SectionedParagraph $par) => $par->html, $newParas);
 
         $cache_deps = [$referenceParas, $newParas, $diffFormatting];
-        $cached     = HashedStaticCache::getCache('compareHtmlParagraphs', $cache_deps);
-        if ($cached) {
-            return $cached;
-        }
+        $cache = HashedStaticCache::getInstance('compareHtmlParagraphs', $cache_deps);
 
-        $matcher = new ArrayMatcher();
-        $matcher->addIgnoredString('###LINENUMBER###');
-        $this->setIgnoreStr('###LINENUMBER###');
-        $renderer = new DiffRenderer();
-        $renderer->setFormatting($diffFormatting);
+        return $cache->getCached(function () use ($referenceParas, $newParas, $diffFormatting) {
+            $matcher = new ArrayMatcher();
+            $matcher->addIgnoredString('###LINENUMBER###');
+            $this->setIgnoreStr('###LINENUMBER###');
+            $renderer = new DiffRenderer();
+            $renderer->setFormatting($diffFormatting);
 
-        list($adjustedRef, $adjustedMatching) = $matcher->matchForDiff($referenceParas, $newParas);
-        if (count($adjustedRef) !== count($adjustedMatching)) {
-            throw new Internal('compareSectionedHtml: number of sections does not match');
-        }
-        $diffSections = [];
-        for ($i = 0; $i < count($adjustedRef); $i++) {
-            $diffLine       = $this->computeLineDiff($adjustedRef[$i], $adjustedMatching[$i]);
-            $diffSections[] = $renderer->renderHtmlWithPlaceholders($diffLine);
-        }
-
-        $pendingInsert = '';
-        $resolved      = [];
-        foreach ($diffSections as $diffS) {
-            $diffS = str_replace('<del>###LINENUMBER###</del>', '###LINENUMBER###', $diffS);
-            $diffS = str_replace(
-                '<del style="color: red; text-decoration: line-through;">###LINENUMBER###</del>',
-                '###LINENUMBER###',
-                $diffS
-            );
-            if (preg_match('/<del( [^>]*)?>###EMPTYINSERTED###<\/del>/siu', $diffS)) {
-                $str = preg_replace('/<del( [^>]*)?>###EMPTYINSERTED###<\/del>/siu', '', $diffS);
-                if (count($resolved) > 0) {
-                    $resolved[count($resolved) - 1] .= $str;
-                } else {
-                    $pendingInsert .= $str;
-                }
-            } else {
-                $str           = preg_replace('/<ins( [^>]*)?>###EMPTYINSERTED###<\/ins>/siu', '', $diffS);
-                $resolved[]    = $pendingInsert . $str;
-                $pendingInsert = '';
+            list($adjustedRef, $adjustedMatching) = $matcher->matchForDiff($referenceParas, $newParas);
+            if (count($adjustedRef) !== count($adjustedMatching)) {
+                throw new Internal('compareSectionedHtml: number of sections does not match');
             }
-        }
-        if ($pendingInsert) {
-            $resolved[] = $pendingInsert;
-        }
+            $diffSections = [];
+            for ($i = 0; $i < count($adjustedRef); $i++) {
+                $diffLine       = $this->computeLineDiff($adjustedRef[$i], $adjustedMatching[$i]);
+                $diffSections[] = $renderer->renderHtmlWithPlaceholders($diffLine);
+            }
 
-        $resolved = MovingParagraphDetector::markupMovedParagraphs($resolved);
+            $pendingInsert = '';
+            $resolved      = [];
+            foreach ($diffSections as $diffS) {
+                $diffS = str_replace('<del>###LINENUMBER###</del>', '###LINENUMBER###', $diffS);
+                $diffS = str_replace(
+                    '<del style="color: red; text-decoration: line-through;">###LINENUMBER###</del>',
+                    '###LINENUMBER###',
+                    $diffS
+                );
+                if (preg_match('/<del( [^>]*)?>###EMPTYINSERTED###<\/del>/siu', $diffS)) {
+                    $str = preg_replace('/<del( [^>]*)?>###EMPTYINSERTED###<\/del>/siu', '', $diffS);
+                    if (count($resolved) > 0) {
+                        $resolved[count($resolved) - 1] .= $str;
+                    } else {
+                        $pendingInsert .= $str;
+                    }
+                } else {
+                    $str           = preg_replace('/<ins( [^>]*)?>###EMPTYINSERTED###<\/ins>/siu', '', $diffS);
+                    $resolved[]    = $pendingInsert . $str;
+                    $pendingInsert = '';
+                }
+            }
+            if ($pendingInsert) {
+                $resolved[] = $pendingInsert;
+            }
 
-        HashedStaticCache::setCache('compareHtmlParagraphs', $cache_deps, $resolved);
-
-        return $resolved;
+            return MovingParagraphDetector::markupMovedParagraphs($resolved);
+        });
     }
 
     /**
@@ -600,7 +606,10 @@ class Diff
         $words             = [
             0 => new DiffWord(),
         ];
-        $diffPartArr       = preg_split('/(###(?:INS|DEL)_(?:START|END)###)/siu', $diff, -1, PREG_SPLIT_DELIM_CAPTURE);
+        $diffPartArr = preg_split('/(###(?:INS|DEL)_(?:START|END)###)/siu', $diff, -1, PREG_SPLIT_DELIM_CAPTURE);
+        if ($diffPartArr === false) {
+            throw new \RuntimeException('Failed to parse line: ' . $diff);
+        }
         $inDel             = $inIns = false;
         $originalWordPos   = 0;
         $pendingOpeningDel = false;

@@ -13,8 +13,40 @@ ob_start();
                     <div class="leftColumn">
                         <?= Yii::t('admin', 'siteacc_usermodal_identity' ) ?>
                     </div>
-                    <div class="rightColumn">
+                    <div class="rightColumn" v-if="!canModifyAuth">
                         {{ user.auth }}
+                    </div>
+                    <div class="rightColumn" v-if="canModifyAuth">
+                        <div v-if="!settingAuth">
+                            {{ user.auth }}
+                            <button class="btn btn-link" @click="openSetAuth()">
+                                <span class="glyphicon glyphicon-wrench"></span>
+                                <span class="sr-only"><?= Yii::t('admin', 'siteacc_usermodal_idnew') ?></span>
+                            </button>
+                        </div>
+                        <div v-if="settingAuth">
+                            <input type="email" class="form-control" autocomplete="off" title="<?= Yii::t('admin', 'siteacc_usermodal_idnew') ?>"
+                                   v-model="newAuth" ref="auth-setter">
+                        </div>
+                    </div>
+                </div>
+                <div class="stdTwoCols 2faRow">
+                    <div class="leftColumn">
+                        <?= Yii::t('admin', 'siteacc_usermodal_2fa') ?>
+                    </div>
+                    <div class="rightColumn">
+                        <span v-if="user.has_2fa">
+                            <span class="glyphicon glyphicon-ok" aria-hidden="true"></span> <?= Yii::t('admin', 'siteacc_usermodal_2fa_set') ?>
+                            <label v-if="canModifyAuth" class="remove2FaHolder">
+                                <input type="checkbox" v-model="remove2Fa" value="1">
+                                <?= Yii::t('admin', 'siteacc_usermodal_2fa_del') ?>
+                            </label>
+                        </span>
+                        <span v-if="!user.has_2fa"><?= Yii::t('admin', 'siteacc_usermodal_2fa_nset') ?></span>
+                        <label v-if="canModifyAuth" class="force2FaHolder">
+                            <input type="checkbox" v-model="force2Fa" value="1">
+                            <?= Yii::t('admin', 'siteacc_usermodal_2fa_force') ?>
+                        </label>
                     </div>
                 </div>
                 <div class="stdTwoCols" v-if="permissionGlobalEdit">
@@ -33,6 +65,14 @@ ob_start();
                                placeholder="<?= Yii::t('admin', 'siteacc_usermodal_passnew') ?>"
                                ref="password-setter"
                         >
+                        <label class="preventPwdChangeHolder">
+                            <input type="checkbox" v-model="preventPasswordChange" value="1">
+                            <?= Yii::t('admin', 'siteacc_usermodal_prevent_pwd') ?>
+                        </label>
+                        <label class="forcePwdChangeHolder">
+                            <input type="checkbox" v-model="forcePasswordChange" value="1">
+                            <?= Yii::t('admin', 'siteacc_usermodal_force_pwd') ?>
+                        </label>
                     </div>
                 </div>
                 <div class="stdTwoCols">
@@ -73,6 +113,14 @@ ob_start();
                 </div>
                 <div class="stdTwoCols">
                     <div class="leftColumn">
+                        <?= Yii::t('admin', 'siteacc_admins_vote_weight' ) ?>
+                    </div>
+                    <div class="rightColumn">
+                        <input type="text" class="form-control inputVoteWeight" v-model="voteweight">
+                    </div>
+                </div>
+                <div class="stdTwoCols">
+                    <div class="leftColumn">
                         <?= Yii::t('admin', 'siteacc_admins_pp_replyto' ) ?>
                     </div>
                     <div class="rightColumn" v-if="!permissionGlobalEdit">
@@ -94,11 +142,15 @@ ob_start();
                     </div>
                 </div>
 
+                <div v-if="permissionGlobalEdit" class="deleteActivator">
+                    <label><input type="checkbox" v-model="deletingVisible"> <?= Yii::t('admin', 'siteacc_useraccdel') ?></label>
+                </div>
+
                 <small v-if="!permissionGlobalEdit" class="onlyGlobalAdminsHint">
                     <?= Yii::t('admin', 'siteacc_usermodal_superh') ?>
                 </small>
             </main>
-            <footer class="modal-footer">
+            <footer class="modal-footer" v-if="!deletingVisible">
                 <a class="changeLogLink" :href="userLogUrl" v-if="user">
                     <span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span>
                     <?= Yii::t('admin','siteacc_usergroup_log') ?>
@@ -111,6 +163,11 @@ ob_start();
                     <?= Yii::t('base', 'save') ?>
                 </button>
             </footer>
+            <footer class="modal-footer" v-if="deletingVisible && permissionGlobalEdit">
+                <button type="button" class="btn btn-danger btnDelete" @click="deleteAccount($event)">
+                    <?= Yii::t('admin','siteacc_useraccdel_btn') ?>
+                </button>
+            </footer>
         </article>
     </form>
 </div>
@@ -121,6 +178,7 @@ $html = ob_get_clean();
 
 <script>
     const userModalTitleTemplate = <?= json_encode(Yii::t('admin', 'siteacc_usermodal_title')) ?>;
+    const userDeleteConfirmTemplate = <?= json_encode(Yii::t('admin', 'siteacc_useraccdel_confirm')) ?>;
 
     __setVueComponent('users', 'component', 'user-edit-widget', {
         template: <?= json_encode($html) ?>,
@@ -132,9 +190,17 @@ $html = ob_get_clean();
                 name_family: null,
                 organization: null,
                 ppreplyto: null,
+                voteweight: null,
                 userGroups: null,
                 settingPassword: false,
-                newPassword: ''
+                settingAuth: false,
+                remove2Fa: false,
+                force2Fa: false,
+                preventPasswordChange: false,
+                forcePasswordChange: false,
+                deletingVisible: false,
+                newPassword: '',
+                newAuth: '',
             }
         },
         computed: {
@@ -160,6 +226,9 @@ $html = ob_get_clean();
                         };
                     })
                 ];
+            },
+            canModifyAuth: function() {
+                return this.permissionGlobalEdit && this.user && this.user.auth.indexOf("email:") === 0;
             }
         },
         methods: {
@@ -169,15 +238,33 @@ $html = ob_get_clean();
                 this.name_family = user.name_family;
                 this.organization = user.organization;
                 this.ppreplyto = user.ppreplyto;
+                this.voteweight = user.vote_weight;
                 this.userGroups = user.groups;
                 this.settingPassword = false;
+                this.settingAuth = false;
                 this.newPassword = '';
+                this.remove2Fa = false;
+                this.force2Fa = user.force_2fa;
+                this.preventPasswordChange = user.prevent_password_change;
+                this.forcePasswordChange = user.force_password_change;
+                this.newAuth = '';
+                this.deletingVisible = false;
 
                 $(this.$refs['user-edit-modal']).modal("show"); // We won't get rid of jquery/bootstrap anytime soon anyway...
             },
             save: function ($event) {
                 const password = (this.settingPassword ? this.newPassword : null);
-                this.$emit('save-user', this.user.id, this.userGroups, this.name_given, this.name_family, this.organization, this.ppreplyto, password);
+                const auth = (this.settingAuth ? this.newAuth : null);
+                this.$emit('save-user', this.user.id, this.userGroups, this.name_given, this.name_family, this.organization, this.ppreplyto, this.voteweight, password, auth, this.remove2Fa, this.force2Fa, this.preventPasswordChange, this.forcePasswordChange);
+                $(this.$refs['user-edit-modal']).modal("hide");
+
+                if ($event) {
+                    $event.preventDefault();
+                    $event.stopPropagation();
+                }
+            },
+            deleteAccount: function ($event) {
+                this.$emit('delete-user', this.user.id, userDeleteConfirmTemplate.replace("%USERNAME%", this.user.auth));
                 $(this.$refs['user-edit-modal']).modal("hide");
 
                 if ($event) {
@@ -188,6 +275,9 @@ $html = ob_get_clean();
             isGroupSelectable: function (group) {
                 if (!this.user.selectable_groups) {
                     return true;
+                }
+                if (this.isInGroup(group)) {
+                    return true; // Always allow to deselect a selected group
                 }
                 return this.user.selectable_groups.indexOf(group.id) !== -1;
             },
@@ -205,6 +295,13 @@ $html = ob_get_clean();
                 this.settingPassword = true;
                 this.$nextTick(function () {
                     this.$refs['password-setter'].focus();
+                });
+            },
+            openSetAuth: function () {
+                this.settingAuth = true;
+                this.newAuth = this.user.email;
+                this.$nextTick(function () {
+                    this.$refs['auth-setter'].focus();
                 });
             },
             setOrganisation: function ($event) {

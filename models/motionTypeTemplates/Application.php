@@ -56,7 +56,7 @@ class Application
         $section->position      = 0;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_app_name');
-        $section->required      = 1;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_YES;
         $section->maxLen        = 0;
         $section->fixedWidth    = 0;
         $section->lineNumbers   = 0;
@@ -72,7 +72,7 @@ class Application
         $section->position      = 1;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_app_photo');
-        $section->required      = 1;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_YES;
         $section->maxLen        = 0;
         $section->fixedWidth    = 0;
         $section->lineNumbers   = 0;
@@ -88,7 +88,7 @@ class Application
         $section->position      = 2;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_app_data');
-        $section->required      = 0;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_NO;
         $section->maxLen        = 0;
         $section->fixedWidth    = 0;
         $section->lineNumbers   = 0;
@@ -107,14 +107,7 @@ class Application
                             'type'  => TabularDataType::TYPE_INTEGER,
                         ]
                     ),
-                    '2' => new TabularDataType(
-                        [
-                            'rowId' => '2',
-                            'title' => \Yii::t('structure', 'preset_app_gender'),
-                            'type'  => TabularDataType::TYPE_STRING,
-                        ]
-                    ),
-                    '3' => new TabularDataType(
+                    '4' => new TabularDataType(
                         [
                             'rowId' => '3',
                             'title' => \Yii::t('structure', 'preset_app_birthcity'),
@@ -122,7 +115,8 @@ class Application
                         ]
                     ),
                 ],
-            ]
+            ],
+            JSON_THROW_ON_ERROR
         );
         $section->save();
 
@@ -132,7 +126,7 @@ class Application
         $section->position      = 3;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_app_intro');
-        $section->required      = 1;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_YES;
         $section->maxLen        = 0;
         $section->fixedWidth    = 0;
         $section->lineNumbers   = 0;
@@ -148,7 +142,7 @@ class Application
         $section->position      = 4;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_app_signature');
-        $section->required      = 1;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_NO;
         $section->maxLen        = 0;
         $section->fixedWidth    = 0;
         $section->lineNumbers   = 0;

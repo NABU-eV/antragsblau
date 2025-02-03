@@ -123,8 +123,18 @@ class VotingMethods
             }
         }
         $votingBlock->setSettings($settings);
-
         $votingBlock->save();
+
+        if (in_array($votingBlock->votingStatus, [VotingBlock::STATUS_OFFLINE, VotingBlock::STATUS_PREPARING])) {
+            $existingAbstention = $votingBlock->getGeneralAbstentionItem();
+            if ($this->request->post('hasGeneralAbstention', false)) {
+                if (!$existingAbstention) {
+                    VotingQuestion::createGeneralAbstentionItem($votingBlock);
+                }
+            } else {
+                $existingAbstention?->delete();
+            }
+        }
     }
 
     public function voteAddIMotion(VotingBlock $votingBlock): void
@@ -142,7 +152,8 @@ class VotingMethods
             $items[] = $this->consultation->getAmendment(intval($idParts[1]));
         } elseif (count($idParts) === 3 && $idParts[0] === 'motion' && $idParts[1] > 0 && $idParts[2] === 'amendments') {
             $motion = $this->consultation->getMotion($idParts[1]);
-            foreach ($motion->getVisibleAmendmentsSorted(false, false) as $amendment) {
+            $filter = IMotionStatusFilter::onlyUserVisible($this->consultation, false)->noAmendmentsIfMotionIsMoved();
+            foreach ($motion->getFilteredAndSortedAmendments($filter) as $amendment) {
                 $items[] = $amendment;
             }
         }
@@ -240,6 +251,7 @@ class VotingMethods
         $vote->motionId = (is_a($item, Motion::class) ? $item->id : null);
         $vote->amendmentId = (is_a($item, Amendment::class) ? $item->id : null);
         $vote->questionId = (is_a($item, VotingQuestion::class) ? $item->id : null);
+        $vote->weight = $user->getSettingsObj()->getVoteWeight($votingBlock->getMyConsultation());
 
         // $public should be the same as votesPublic, as it was cached in the frontend and is sent from it as-is.
         // This is just a safeguard so that an accidental change in the value in the database does not lead to
@@ -283,11 +295,48 @@ class VotingMethods
         }
     }
 
+    public function userSetAbstention(VotingBlock $votingBlock, User $user): void
+    {
+        $votes = $votingBlock->getVotesForUser($user);
+        if (count($votes) > 0) {
+            throw new FormError('Already voted - not possible to abstain anymore');
+        }
+        $abstentionItem = $votingBlock->getGeneralAbstentionItem();
+        if (!$abstentionItem) {
+            throw new FormError('Abstaining is not possible');
+        }
+
+        $hasAbstained = $votingBlock->userHasAbstained($user);
+
+        ResourceLock::lockVotingItemForVoting($abstentionItem);
+        try {
+            $abstentionData = $this->request->post('abstention');
+            if ($abstentionData['abstain']) {
+                if (!$hasAbstained) {
+                    $vote = $this->voteForSingleItem($user, $votingBlock, $abstentionItem, $abstentionData['public'], 'yes');
+                    $vote->save();
+                }
+            } else {
+                if ($hasAbstained) {
+                    $this->undoVoteForSingleItem($user, $votingBlock, $abstentionItem);
+                }
+            }
+            ResourceLock::unlockVotingItemForVoting($abstentionItem);
+        } catch (FormError $e) {
+            ResourceLock::unlockVotingItemForVoting($abstentionItem);
+            throw $e;
+        }
+    }
+
     /**
      * @throws FormError
      */
     public function userVote(VotingBlock $votingBlock, User $user): void
     {
+        if ($votingBlock->userHasAbstained($user)) {
+            throw new FormError('Voting is not possible after abstaining');
+        }
+
         foreach ($this->request->post('votes', []) as $voteData) {
             $public = isset($voteData['public']) ? intval($voteData['public']) : VotingBlock::VOTES_PUBLIC_NO;
             if (isset($voteData['itemGroupSameVote']) && trim($voteData['itemGroupSameVote']) !== '') {

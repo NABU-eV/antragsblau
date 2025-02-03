@@ -73,6 +73,16 @@ echo Html::beginForm('', 'post', [
         <div class="typePresetInfo"><?= Yii::t('admin', 'motion_type_templ_pdfapplh') ?></div>
 
         <label class="typePreset"
+               data-label-single="<?= Yii::t('structure', 'preset_progress_singular') ?>"
+               data-label-plural="<?= Yii::t('structure', 'preset_progress_plural') ?>"
+               data-label-prefix=""
+               data-label-cta="<?= Yii::t('structure', 'preset_progress_call') ?>">
+            <input type="radio" name="type[preset]" value="progress" class="presetProgress">
+            <span><?= Yii::t('admin', 'motion_type_templ_progress') ?></span>
+        </label>
+        <div class="typePresetInfo"><?= Yii::t('admin', 'motion_type_templ_progressh') ?></div>
+
+        <label class="typePreset"
                data-label-single="<?= Yii::t('structure', 'preset_statutes_singular') ?>"
                data-label-plural="<?= Yii::t('structure', 'preset_statutes_plural') ?>"
                data-label-prefix="S"
@@ -144,36 +154,6 @@ echo Html::beginForm('', 'post', [
         <?php
         $options = ['class' => 'form-control', 'id' => 'typeMotionPrefix', 'placeholder' => 'A'];
         echo Html::textInput('type[motionPrefix]', '', $options);
-        ?>
-    </div>
-</div>
-
-<div class="stdTwoCols">
-    <label class="leftColumn">
-        <?= Yii::t('admin', 'motion_type_pdf_layout') ?>:
-    </label>
-    <div class="rightColumn thumbnailedLayoutSelector">
-        <?php
-        $pdfTemplates = IPDFLayout::getAvailableClassesWithLatex();
-        $hasTex = isset($pdfTemplates[1]);
-        foreach ($pdfTemplates as $lId => $layout) {
-            if ($hasTex) {
-                $checked = ($lId === 1);
-            } else {
-                $checked = ($lId === 'php0');
-            }
-            echo '<label class="layout">';
-            echo Html::radio('type[pdfLayout]', $checked, ['value' => $lId, 'required' => 'required']);
-            echo '<span>';
-            if ($layout['preview']) {
-                echo '<img src="' . Html::encode($layout['preview']) . '" ' .
-                    'alt="' . Html::encode($layout['title']) . '" ' .
-                    'title="' . Html::encode($layout['title']) . '"></span>';
-            } else {
-                echo '<span class="placeholder">' . Html::encode($layout['title']) . '</span>';
-            }
-            echo '</label>';
-        }
         ?>
     </div>
 </div>

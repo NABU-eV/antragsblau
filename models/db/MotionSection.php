@@ -23,7 +23,7 @@ use yii\db\ActiveQuery;
  */
 class MotionSection extends IMotionSection
 {
-    public function init()
+    public function init(): void
     {
         parent::init();
 
@@ -35,6 +35,24 @@ class MotionSection extends IMotionSection
     public static function tableName(): string
     {
         return AntragsgruenApp::getInstance()->tablePrefix . 'motionSection';
+    }
+
+    public static function createEmpty(int $sectionId, int $public, ?int $motionId = null): self
+    {
+        $section = new self();
+        $section->sectionId = $sectionId;
+        if ($motionId) {
+            $section->motionId = $motionId;
+        }
+        $section->public = $public;
+
+        $section->cache = '';
+        $section->setData('');
+        $section->dataRaw = '';
+
+        $section->refresh();
+
+        return $section;
     }
 
     private function hasExternallySavedData(): bool
@@ -59,7 +77,7 @@ class MotionSection extends IMotionSection
     {
         $app = AntragsgruenApp::getInstance();
         $path = $app->binaryFilePath;
-        if (substr($path, -1, 1) !== '/') {
+        if (!str_ends_with($path, '/')) {
             $path .= '/';
         }
         $path .= ($this->sectionId % 100);
@@ -122,7 +140,6 @@ class MotionSection extends IMotionSection
         if ($current && $current->getMotion($this->motionId)) {
             return $current;
         } else {
-            /** @var Motion $motion */
             $motion = Motion::findOne($this->motionId);
             if ($motion) {
                 return Consultation::findOne($motion->consultationId);
@@ -176,7 +193,10 @@ class MotionSection extends IMotionSection
             $excludedStatuses = $this->getConsultation()->getStatuses()->getAmendmentStatusesUnselectableForMerging();
         }
         foreach ($motion->amendments as $amend) {
-            $allowedProposedChange = in_array($amend->status, [Amendment::STATUS_PROPOSED_MODIFIED_AMENDMENT, Amendment::STATUS_PROPOSED_MODIFIED_MOTION]);
+            $allowedProposedChange = ($amend->status === Amendment::STATUS_PROPOSED_MODIFIED_AMENDMENT);
+            if ($motion->proposalStatus === Motion::STATUS_MODIFIED_ACCEPTED && $amend->status === Motion::STATUS_PROPOSED_MODIFIED_MOTION) {
+                $allowedProposedChange = true;
+            }
             if (in_array($amend->status, $excludedStatuses) && !$allowedProposedChange) {
                 continue;
             }
@@ -208,7 +228,7 @@ class MotionSection extends IMotionSection
             }
             $filepath = $this->getExternallySavedFile();
             if (file_exists($filepath)) {
-                return file_get_contents($filepath);
+                return (string) file_get_contents($filepath);
             } else {
                 return '';
             }
@@ -258,30 +278,26 @@ class MotionSection extends IMotionSection
      */
     public function getTextParagraphLines(bool $minOnePara = false): array
     {
-        if ($this->getSettings()->type !== ISectionType::TYPE_TEXT_SIMPLE) {
+        if (!in_array($this->getSettings()->type, [ISectionType::TYPE_TEXT_SIMPLE, ISectionType::TYPE_TEXT_EDITORIAL])) {
             throw new Internal('Paragraphs are only available for simple text sections.');
         }
 
         $lineLength = $this->getConsultation()->getSettings()->lineLength;
-        $cacheDeps  = [$lineLength, $minOnePara, $this->getData()];
-        $cacheFunc  = 'getTextParagraphLines2';
-        $cache      = HashedStaticCache::getCache($cacheFunc, $cacheDeps);
-        if ($cache) {
-            return $cache;
-        }
+        $cacheDeps = [$lineLength, $minOnePara, $this->getData()];
+        $cache = HashedStaticCache::getInstance('getTextParagraphLines2', $cacheDeps);
 
-        $paragraphs = HTMLTools::sectionSimpleHTML($this->getData());
-        foreach ($paragraphs as $paragraph) {
-            $paragraph->lines = LineSplitter::splitHtmlToLines($paragraph->html, $lineLength, '###LINENUMBER###');
-        }
-        if ($minOnePara && count($paragraphs) === 0) {
-            $paragraphs[] = new SectionedParagraph('', 0, 0);
-            $paragraphs[0]->lines = [];
-        }
+        return $cache->getCached(function () use ($minOnePara, $lineLength) {
+            $paragraphs = HTMLTools::sectionSimpleHTML($this->getData());
+            foreach ($paragraphs as $paragraph) {
+                $paragraph->lines = LineSplitter::splitHtmlToLines($paragraph->html, $lineLength, '###LINENUMBER###');
+            }
+            if ($minOnePara && count($paragraphs) === 0) {
+                $paragraphs[] = new SectionedParagraph('', 0, 0);
+                $paragraphs[0]->lines = [];
+            }
 
-        HashedStaticCache::setCache($cacheFunc, $cacheDeps, $paragraphs);
-
-        return $paragraphs;
+            return $paragraphs;
+        });
     }
 
     /**

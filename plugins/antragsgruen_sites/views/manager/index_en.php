@@ -9,7 +9,7 @@ use yii\helpers\Html;
  * @var Site[] $site
  */
 
-$this->title = 'Antragsgrün - Motion.Tools - Managing motions and amendments online';
+$this->title = 'Antragsgrün - Motion.Tools - Managing resolutions, motions and amendments online';
 /** @var \app\controllers\Base $controller */
 $controller  = $this->context;
 $controller->layoutParams->addCSS('css/manager.css');
@@ -42,12 +42,14 @@ $controller->layoutParams->addInlineCss('
 
 ?>
 <h1>Antragsgrün / Motion.Tools<br>
-    <small>The Online Motion Administration for Political Conventions and General Assemblies</small>
+    <small>Manage Resolutions and Amendments on Conventions and Congresses.</small>
 </h1>
 
 <div class="content infoSite">
-    <p>Antragsgrün offers a clear and efficient tool for the effective administration of motions, amendments, and
-        candidacies: from submission to administration and print template.</p>
+    <p>Antragsgrün is an easy-to-use online tool for NGOs, political parties,
+        and social initiatives to collaboratively discuss resolutions, party platforms, and amendments.
+        It helps to manage candidacies and supports meetings by providing online votings,
+        speaking lists, and many more features.</p>
 
     <p>Many organizations are already using the tool successfully such as the
         <a href="https://www.youthforum.org/">European Youth Forum</a>, the <a href="https://www.gruene.de/">German</a> and
@@ -58,7 +60,7 @@ $controller->layoutParams->addInlineCss('
 
 
 <section aria-labelledby="motions">
-    <h2 id="motions" class="green">Motions, amendments, candidacies</h2>
+    <h2 id="motions" class="green">Motions, amendments, resolutions, candidacies</h2>
 
     <div class="content infoSite">
         <p>Antragsgrün allows you to implement your whole motion process, including amendments and candidacies.</p>
@@ -95,11 +97,19 @@ $controller->layoutParams->addInlineCss('
             <li>... and much more.</li>
         </ul>
 
-        <p style="text-align: center; font-weight: bold;">
-            <a href="<?= Html::encode(UrlHelper::createUrl('manager/help')) ?>">
+        <p>
+            <a href="<?= Html::encode(UrlHelper::createUrl('manager/help')) ?>" style="font-weight: bold;">
                 <span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span>
                 Get a more exhaustive list of features
-            </a>
+            </a><br><br>
+            <a href="/help/member-motion">
+                <span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span>
+                Tutorial: Submission of motions and resolutions
+            </a><br>
+            <a href="/help/amendments">
+                <span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span>
+                Tutorial: Submission of amendments
+            </a><br>
         </p>
 
         <br style="clear: both;">
@@ -190,7 +200,7 @@ $controller->layoutParams->addInlineCss('
 
         <p style="margin-top: 25px;"><strong>Free testing</strong></p>
         <p>If you want to test the system to see if it suits your purpose, you can do so easily by creating your own test
-            version without the need to provide contact details. The version is available for three days:
+            version without the need to provide contact details. The version is available for at least three days:
         </p>
         <p style="text-align: right;">
             <a href="https://sandbox.motion.tools/createsite?language=en" class="btn btn-default">Create test version</a>

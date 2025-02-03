@@ -3,9 +3,9 @@
 namespace app\models\db;
 
 use app\components\UrlHelper;
+use app\models\policies\IPolicy;
 use app\models\settings\AntragsgruenApp;
-use yii\db\ActiveQuery;
-use yii\db\ActiveRecord;
+use yii\db\{ActiveQuery, ActiveRecord};
 
 /**
  * @property int|null $id
@@ -15,6 +15,7 @@ use yii\db\ActiveRecord;
  * @property string $category
  * @property string $textId
  * @property int|null $menuPosition
+ * @property string|null $policyRead
  * @property string|null $title
  * @property string|null $breadcrumb
  * @property string|null $text
@@ -24,7 +25,7 @@ use yii\db\ActiveRecord;
  * @property Consultation|null $consultation
  * @property Site|null $site
  */
-class ConsultationText extends ActiveRecord
+class ConsultationText extends ActiveRecord implements IHasPolicies
 {
     public const DEFAULT_CATEGORY = 'pagedata';
 
@@ -82,6 +83,21 @@ class ConsultationText extends ActiveRecord
         $defaultPages = array_keys(self::getDefaultPages());
 
         return !in_array($this->textId, $defaultPages);
+    }
+
+    public function getReadPolicy(): IPolicy
+    {
+        if ($this->policyRead === null) {
+            $policy = (string)IPolicy::POLICY_ALL;
+        } else {
+            $policy = $this->policyRead;
+        }
+        return IPolicy::getInstanceFromDb($policy, $this->getMyConsultation(), $this);
+    }
+
+    public function setReadPolicy(IPolicy $policy): void
+    {
+        $this->policyRead = $policy->serializeInstanceForDb();
     }
 
     public function getUrl(): string
@@ -143,6 +159,19 @@ class ConsultationText extends ActiveRecord
         }
 
         return UrlHelper::createUrl($saveParams);
+    }
+
+    public function getMyFileGroup(): ?ConsultationFileGroup
+    {
+        if (!$this->getMyConsultation()) {
+            return null;
+        }
+        foreach ($this->getMyConsultation()->fileGroups as $fileGroup) {
+            if ($fileGroup->consultationTextId === $this->id) {
+                return $fileGroup;
+            }
+        }
+        return null;
     }
 
     public function getImageBrowseUrl(): string
@@ -249,10 +278,14 @@ class ConsultationText extends ActiveRecord
             $pages = array_merge($pages, ConsultationText::findAll(['siteId' => $site->id, 'consultationId' => null]));
         }
         if ($consultation) {
-            $pages = array_merge($pages, ConsultationText::findAll(['consultationId' => $consultation->id]));
+            $pages = array_merge($pages, $consultation->texts);
         }
         $pages = array_filter($pages, function (ConsultationText $page) {
             if ($page->textId === 'help' && $page->text === \Yii::t('pages', 'content_help_place')) {
+                return false;
+            }
+
+            if ($page->consultationId !== null && !$page->getReadPolicy()->checkCurrUser()) {
                 return false;
             }
 
@@ -268,7 +301,7 @@ class ConsultationText extends ActiveRecord
     public static function getPageData(?Site $site, ?Consultation $consultation, string $pageKey): ConsultationText
     {
         $foundText = null;
-        if (!in_array($pageKey, static::getSitewidePages())) {
+        if (!in_array($pageKey, static::getSitewidePages()) && $consultation) {
             foreach ($consultation->texts as $text) {
                 if ($text->category === self::DEFAULT_CATEGORY && mb_strtolower($text->textId) === mb_strtolower($pageKey)) {
                     $foundText = $text;
@@ -341,5 +374,16 @@ class ConsultationText extends ActiveRecord
         });
 
         return $pages;
+    }
+
+    // Hint: deadlines for votings are not implemented yet
+    public function isInDeadline(string $type): bool
+    {
+        return true;
+    }
+
+    public function getDeadlinesByType(string $type): array
+    {
+        return [];
     }
 }

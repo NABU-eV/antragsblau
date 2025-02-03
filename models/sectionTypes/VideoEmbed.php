@@ -2,7 +2,7 @@
 
 namespace app\models\sectionTypes;
 
-use app\components\{HTMLTools, latex\Content, latex\Exporter};
+use app\components\{html2pdf\Content as HtmlToPdfContent, HTMLTools, latex\Content as LatexContent, latex\Exporter};
 use app\models\db\Consultation;
 use app\models\exceptions\FormError;
 use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
@@ -18,13 +18,16 @@ class VideoEmbed extends ISectionType
 
     private function extractYoutubeUrl(string $url): ?string
     {
-        if (preg_match('/youtube\.com\/(watch)?\?v=(?<id>[a-z0-9]{11})/siu', $url, $matches)) {
+        if (preg_match('/youtube\.com\/(watch)?\?v=(?<id>[a-z0-9_-]{11})/siu', $url, $matches)) {
             return $matches['id'];
         }
-        if (preg_match('/youtu\.be\/(?<id>[a-z0-9-]{11})/siu', $url, $matches)) {
+        if (preg_match('/youtu\.be\/(?<id>[a-z0-9_-]{11})/siu', $url, $matches)) {
             return $matches['id'];
         }
-        if (preg_match('/youtube\.com\/embed\/(?<id>[a-z0-9]{11})/siu', $url, $matches)) {
+        if (preg_match('/youtube\.com\/embed\/(?<id>[a-z0-9_-]{11})/siu', $url, $matches)) {
+            return $matches['id'];
+        }
+        if (preg_match('/youtube\.com\/shorts\/(?<id>[a-z0-9_-]{11})/siu', $url, $matches)) {
             return $matches['id'];
         }
         return null;
@@ -56,7 +59,9 @@ class VideoEmbed extends ISectionType
     {
         $type = $this->section->getSettings();
         $str  = '<section class="form-group section' . $this->section->sectionId . ' type' . static::TYPE_VIDEO_EMBED . '">';
+
         $str .= $this->getFormLabel();
+        $str .= $this->getHintsAfterFormLabel();
 
         $str .= '<input type="text" class="form-control" id="sections_' . $type->id . '"' .
             ' name="sections[' . $type->id . ']" value="' . Html::encode($this->getVideoUrl()) . '"' .
@@ -72,6 +77,9 @@ class VideoEmbed extends ISectionType
         return $this->getMotionFormField();
     }
 
+    /**
+     * @param string $data
+     */
     public function setMotionData($data): void
     {
         $this->section->setData($data);
@@ -84,8 +92,7 @@ class VideoEmbed extends ISectionType
     }
 
     /**
-     * @param array $data
-     * @throws FormError
+     * @param string $data
      */
     public function setAmendmentData($data): void
     {
@@ -126,11 +133,15 @@ class VideoEmbed extends ISectionType
         return ($this->section->getData() === '');
     }
 
-    public function isFileUploadType(): bool
+    public function showIfEmpty(): bool
     {
         return false;
     }
 
+    public function isFileUploadType(): bool
+    {
+        return false;
+    }
 
     public function printMotionToPDF(IPDFLayout $pdfLayout, IPdfWriter $pdf): void
     {
@@ -166,7 +177,7 @@ class VideoEmbed extends ISectionType
         return ($this->isEmpty() ? '' : $this->section->getData());
     }
 
-    public function printMotionTeX(bool $isRight, Content $content, Consultation $consultation): void
+    public function printMotionTeX(bool $isRight, LatexContent $content, Consultation $consultation): void
     {
         if ($this->isEmpty()) {
             return;
@@ -182,7 +193,7 @@ class VideoEmbed extends ISectionType
         }
     }
 
-    public function printAmendmentTeX(bool $isRight, Content $content): void
+    public function printAmendmentTeX(bool $isRight, LatexContent $content): void
     {
         if ($this->isEmpty()) {
             return;
@@ -197,6 +208,17 @@ class VideoEmbed extends ISectionType
             $content->textMain .= $text;
         }
     }
+
+    public function printMotionHtml2Pdf(bool $isRight, HtmlToPdfContent $content, Consultation $consultation): void
+    {
+        // TODO: Implement printMotionHtml2Pdf() method.
+    }
+
+    public function printAmendmentHtml2Pdf(bool $isRight, HtmlToPdfContent $content): void
+    {
+        // TODO: Implement printAmendmentHtml2Pdf() method.
+    }
+
 
     public function getMotionODS(): string
     {

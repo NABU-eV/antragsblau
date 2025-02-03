@@ -2,15 +2,20 @@
 
 namespace app\controllers;
 
+use app\models\policies\{IPolicy, UserGroups};
 use app\models\settings\{Layout, Privileges, AntragsgruenApp};
 use app\models\http\{BinaryFileResponse, HtmlErrorResponse, HtmlResponse, JsonResponse, RedirectResponse, ResponseInterface, RestApiResponse};
 use app\components\{HTMLTools, Tools, UrlHelper, ZipWriter};
-use app\models\db\{ConsultationFile, ConsultationFileGroup, ConsultationText, User};
+use app\models\db\{ConsultationFile, ConsultationFileGroup, ConsultationText, ConsultationUserGroup, User};
 use app\models\exceptions\{Access, FormError, ResponseException};
-use yii\web\{NotFoundHttpException, Response};
+use yii\web\Response;
 
 class PagesController extends Base
 {
+    public const VIEW_ID_FILES = 'file';
+    public const VIEW_ID_CSS = 'css';
+    public const VIEW_ID_SHOW_PAGE = 'show-page';
+
     public function actionListPages(): ResponseInterface
     {
         if (!User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CONTENT_EDIT, null)) {
@@ -23,6 +28,15 @@ class PagesController extends Base
                 if (trim($url) === '' || preg_match('/[^\w_\-,.äöüß]/siu', $url)) {
                     throw new FormError('Invalid character in the URL');
                 }
+                $alreadyCreatedPage = ConsultationText::findOne([
+                    'category'       => 'pagedata',
+                    'consultationId' => $this->consultation->id,
+                    'textId'         => $url,
+                ]);
+                if ($alreadyCreatedPage) {
+                    throw new FormError(\Yii::t('pages', 'err_exists_con'));
+                }
+
                 $page = new ConsultationText();
                 $page->category = ConsultationText::DEFAULT_CATEGORY;
                 $page->textId = $url;
@@ -44,7 +58,7 @@ class PagesController extends Base
         return new HtmlResponse($this->render('list'));
     }
 
-    protected function getPageForView(string $pageSlug): ?ConsultationText
+    protected function getPageForView(string $pageSlug): ConsultationText
     {
         $pageData = ConsultationText::getPageData($this->site, $this->consultation, $pageSlug);
 
@@ -62,7 +76,10 @@ class PagesController extends Base
 
     public function actionShowPage(string $pageSlug): ResponseInterface
     {
-        $this->getPageForView($pageSlug); // Assert the page exists
+        $pageData = $this->getPageForView($pageSlug);
+        if ($pageData->consultationId !== null && !$pageData->getReadPolicy()->checkCurrUser()) {
+            return new HtmlErrorResponse(403, \Yii::t('admin', 'no_access'));
+        }
 
         return $this->renderContentPage($pageSlug);
     }
@@ -70,8 +87,8 @@ class PagesController extends Base
     public function actionGetRest(string $pageSlug): RestApiResponse
     {
         $pageData = $this->getPageForView($pageSlug);
-        if (!$pageData) {
-            return $this->returnRestResponseFromException(new \Exception('page not found'));
+        if (!$pageData->getReadPolicy()->checkCurrUser()) {
+            return new RestApiResponse(403, ['error' => 'No access']);
         }
 
         $data = [
@@ -109,11 +126,11 @@ class PagesController extends Base
 
         if ($page->siteId) {
             if (!User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CONTENT_EDIT, null)) {
-                throw new Access('No permissions to edit this page');
+                throw new Access(\Yii::t('pages', 'err_permission'));
             }
         } else {
             if (!User::currentUserIsSuperuser()) {
-                throw new Access('No permissions to edit this page');
+                throw new Access(\Yii::t('pages', 'err_permission'));
             }
         }
 
@@ -155,7 +172,7 @@ class PagesController extends Base
                     'textId'         => $page->textId,
                 ]);
                 if ($alreadyCreatedPage) {
-                    $message = 'There already is a site-wide content page with this URL.';
+                    $message = \Yii::t('pages', 'err_exists_site');
                 } else {
                     $page->consultationId = null;
                 }
@@ -167,11 +184,22 @@ class PagesController extends Base
                     'textId'         => $page->textId,
                 ]);
                 if ($alreadyCreatedPage) {
-                    $message = 'There already is a consultation content page with this URL.';
+                    $message = \Yii::t('pages', 'err_exists_con');
                 } else {
                     $page->consultationId = $this->consultation->id;
                 }
             }
+
+            if ($this->getHttpRequest()->post('policyReadPage')) {
+                $data = $this->getHttpRequest()->post('policyReadPage');
+                $policy = IPolicy::getInstanceFromDb($data['id'], $this->consultation, $page);
+                if (is_a($policy, UserGroups::class)) {
+                    $groups = ConsultationUserGroup::loadGroupsByIdForConsultation($this->consultation, $data['groups'] ?? []);
+                    $policy->setAllowedUserGroups($groups);
+                }
+                $page->setReadPolicy($policy);
+            }
+
             $newTextId = $this->getHttpRequest()->post('url');
             if ($newTextId && !preg_match('/[^\w_\-,.äöüß]/siu', $newTextId) && $page->textId !== $newTextId) {
                 $page->textId = $newTextId;
@@ -192,7 +220,7 @@ class PagesController extends Base
             'redirectTo'       => ($needsReload ? $page->getUrl() : null),
         ];
 
-        $downloadableResult = $this->handleDownloadableFiles($this->getHttpRequest()->post());
+        $downloadableResult = $this->handleDownloadableFiles($page, $this->getHttpRequest()->post());
         $result             = array_merge($result, $downloadableResult);
 
         $page->save();
@@ -200,17 +228,28 @@ class PagesController extends Base
         return new JsonResponse($result);
     }
 
-    private function handleDownloadableFiles(array $post): array
+    private function handleDownloadableFiles(ConsultationText $page, array $post): array
     {
         $result = [];
         if (isset($post['uploadDownloadableFile']) && strlen($post['uploadDownloadableFile']) > 0) {
-            $file                   = ConsultationFile::createDownloadableFile(
+            $group = $page->getMyFileGroup();
+            if (!$group) {
+                $group = new ConsultationFileGroup();
+                $group->consultationId = $this->consultation->id;
+                $group->consultationTextId = $page->id;
+                $group->title = $page->title;
+                $group->parentGroupId = null;
+                $group->position = 0;
+                $group->save();
+            }
+
+            $file = ConsultationFile::createDownloadableFile(
                 $this->consultation,
                 User::getCurrentUser(),
                 base64_decode($post['uploadDownloadableFile']),
                 $post['uploadDownloadableFilename'],
                 $post['uploadDownloadableTitle'],
-                null
+                $group
             );
             $result['uploadedFile'] = [
                 'title' => $file->title,
@@ -222,8 +261,12 @@ class PagesController extends Base
         return $result;
     }
 
-    public function actionDeleteFile(): JsonResponse
+    public function actionDeleteFile(): ResponseInterface
     {
+        if (!User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CONTENT_EDIT, null)) {
+            return new HtmlErrorResponse(403, 'No permissions to delete files');
+        }
+
         $fileId = intval($this->getHttpRequest()->post('id'));
         foreach ($this->consultation->files as $file) {
             if ($file->id === $fileId) {
@@ -355,7 +398,13 @@ class PagesController extends Base
             'filename'       => $filename,
         ]);
         if (!$file) {
-            throw new NotFoundHttpException('file not found', 404);
+            return new HtmlErrorResponse(404, 'File not found');
+        }
+
+        if ($file->fileGroupId && $file->fileGroup->consultationTextId) {
+            if (!$file->fileGroup->consultationText->getReadPolicy()->checkCurrUser()) {
+                return new HtmlErrorResponse(403, 'No access to file');
+            }
         }
 
         return new class($file) implements ResponseInterface {
@@ -395,7 +444,6 @@ class PagesController extends Base
 
         $data       = $this->renderPartial('css', [
             'stylesheetSettings' => $stylesheetSettings,
-            'format' => \ScssPhp\ScssPhp\Formatter\Compressed::class,
         ]);
         $toSaveData = ANTRAGSGRUEN_VERSION . "\n" . $data;
         ConsultationFile::createStylesheetCache($this->site, $stylesheetSettings, $toSaveData);
@@ -415,7 +463,8 @@ class PagesController extends Base
             $group->save();
 
             $this->getHttpSession()->setFlash('success', \Yii::t('pages', 'documents_group_added'));
-            $this->consultation->refresh();
+
+            return new RedirectResponse(UrlHelper::createUrl('/pages/documents'));
         }
 
         if ($iAmAdmin && $this->isPostSet('deleteGroup') && $this->getPostValue('groupId') > 0) {
@@ -431,7 +480,8 @@ class PagesController extends Base
             }
             if ($found) {
                 $this->getHttpSession()->setFlash('success', \Yii::t('pages', 'documents_group_deleted'));
-                $this->consultation->refresh();
+
+                return new RedirectResponse(UrlHelper::createUrl('/pages/documents'));
             }
         }
 
@@ -454,7 +504,8 @@ class PagesController extends Base
                 );
 
                 $this->getHttpSession()->setFlash('success', \Yii::t('pages', 'documents_uploaded_file'));
-                $this->consultation->refresh();
+
+                return new RedirectResponse(UrlHelper::createUrl('/pages/documents'));
             }
         }
 
@@ -469,7 +520,8 @@ class PagesController extends Base
             }
             if ($found) {
                 $this->getHttpSession()->setFlash('success', \Yii::t('pages', 'documents_file_deleted'));
-                $this->consultation->refresh();
+
+                return new RedirectResponse(UrlHelper::createUrl('/pages/documents'));
             }
         }
 
@@ -482,7 +534,8 @@ class PagesController extends Base
             foreach ($this->consultation->fileGroups as $fileGroup) {
                 if (isset($idPosition[$fileGroup->id])) {
                     $fileGroup->position = $idPosition[$fileGroup->id];
-                    $fileGroup->save();
+
+                    return new RedirectResponse(UrlHelper::createUrl('/pages/documents'));
                 }
             }
         }
@@ -496,6 +549,9 @@ class PagesController extends Base
 
         $zipName = 'documents';
         foreach ($this->consultation->fileGroups as $fileGroup) {
+            if ($fileGroup->consultationTextId) {
+                continue;
+            }
             $directory = Tools::sanitizeFilename($fileGroup->title, true);
             if ($fileGroup->id === intval($groupId)) {
                 $zipName = Tools::sanitizeFilename($fileGroup->title, false);

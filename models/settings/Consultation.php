@@ -77,13 +77,17 @@ class Consultation implements \JsonSerializable
 
     public bool $commentsSupportable = false;
     public bool $screeningMotionsShown = false;
+    public bool $obsoletedByMotionsShown = true;
     public bool $odtExportHasLineNumers = true;
     public bool $pProcedureExpandAll = true; // If false: only show max. 1 section in the internal proposed procedure
     public bool $adminListFilerByMotion = false; // If true: the admin list is filtered by motion. To be activated manually.
     public bool $showIMotionEditDate = false;
     public bool $ppEditableAfterPublication = true;
     public bool $homepageTagsList = true;
+    public bool $homepageByTag = false;
     public bool $externalLinksNewWindow = false;
+    public bool $motionPrevNextLinks = false;
+    public bool $allowRequestingAccess = true;
 
     public int $lineLength = 80;
     public int $motionTitlePrefixNumMaxLen = 1;
@@ -165,15 +169,20 @@ class Consultation implements \JsonSerializable
         ];
     }
 
-    public function getStartLayoutView(): ?string
+    public function getStartLayoutViewFromId(int $id): string
     {
-        return match ($this->startLayoutType) {
+        return match ($id) {
             Consultation::START_LAYOUT_STD => 'index_layout_std',
             Consultation::START_LAYOUT_TAGS => 'index_layout_tags',
             Consultation::START_LAYOUT_AGENDA_LONG, Consultation::START_LAYOUT_AGENDA_HIDE_AMEND, Consultation::START_LAYOUT_AGENDA => 'index_layout_agenda',
             Consultation::START_LAYOUT_DISCUSSION_TAGS => 'index_layout_discussion_tags',
-            default => throw new Internal('Unknown layout: ' . $this->startLayoutType),
+            default => throw new Internal('Unknown layout: ' . $id),
         };
+    }
+
+    public function getStartLayoutView(): string
+    {
+        return $this->getStartLayoutViewFromId($this->startLayoutType);
     }
 
     public function getConsultationSidebar(): ?string

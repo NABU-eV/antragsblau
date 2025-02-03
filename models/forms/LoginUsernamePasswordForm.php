@@ -1,15 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\models\forms;
 
-use app\components\Captcha;
-use app\components\ExternalPasswordAuthenticatorInterface;
-use app\components\UrlHelper;
+use app\components\{Captcha, ExternalPasswordAuthenticatorInterface, UrlHelper};
+use app\controllers\{PagesController, UserController};
 use app\models\db\{EMailLog, FailedLoginAttempt, Site, User};
 use app\models\exceptions\{Internal, Login, LoginInvalidPassword, LoginInvalidUser, MailNotSent};
-use app\models\settings\AntragsgruenApp;
-use app\models\settings\Site as SiteSettings;
+use app\models\settings\{AntragsgruenApp, Site as SiteSettings};
 use yii\base\Model;
+use yii\web\Session;
 
 class LoginUsernamePasswordForm extends Model
 {
@@ -24,8 +25,13 @@ class LoginUsernamePasswordForm extends Model
 
     public bool $createAccount = false;
 
-    public function __construct(private ?ExternalPasswordAuthenticatorInterface $externalAuthenticator)
-    {
+    private const SESSION_KEY_EMAIL_CONFIRMATION = 'emailConfirmationUser';
+    private const SESSION_KEY_PWD_CHANGE = 'passwordChangeUser';
+
+    public function __construct(
+        private readonly Session $session,
+        private readonly ?ExternalPasswordAuthenticatorInterface $externalAuthenticator
+    ) {
         parent::__construct();
     }
 
@@ -42,19 +48,19 @@ class LoginUsernamePasswordForm extends Model
     /**
      * @throws MailNotSent
      */
-    private function sendConfirmationEmail(User $user): void
+    public function sendConfirmationEmail(User $user): void
     {
         if ($this->externalAuthenticator && !$this->externalAuthenticator->supportsCreatingAccounts()) {
             throw new Internal('Creating account is not supported');
         }
         $bestCode = $user->createEmailConfirmationCode();
-        $params = ['/user/confirmregistration', 'email' => $this->username, 'code' => $bestCode, 'subdomain' => null];
+        $params = ['/user/confirmregistration', 'email' => $user->email, 'code' => $bestCode, 'subdomain' => null];
         $link = UrlHelper::absolutizeLink(UrlHelper::createUrl($params));
 
         \app\components\mail\Tools::sendWithLog(
             EMailLog::TYPE_REGISTRATION,
             null,
-            $this->username,
+            $user->email,
             $user->id,
             \Yii::t('user', 'create_emailconfirm_title'),
             \Yii::t('user', 'create_emailconfirm_msg'),
@@ -64,8 +70,10 @@ class LoginUsernamePasswordForm extends Model
                 '%BEST_LINK%' => $link,
             ]
         );
-    }
 
+        $user->recoveryAt = date('Y-m-d H:i:s');
+        $user->save();
+    }
 
     /**
      * @throws Login
@@ -90,7 +98,7 @@ class LoginUsernamePasswordForm extends Model
             throw new Login($this->error);
         }
         if (strlen($this->password) < static::PASSWORD_MIN_LEN) {
-            $this->error = str_replace('%MINLEN%', static::PASSWORD_MIN_LEN, \Yii::t('user', 'create_err_pwdlength'));
+            $this->error = str_replace('%MINLEN%', (string)static::PASSWORD_MIN_LEN, \Yii::t('user', 'create_err_pwdlength'));
             throw new Login($this->error);
         }
         if ($this->password !== $this->passwordConfirm) {
@@ -130,7 +138,7 @@ class LoginUsernamePasswordForm extends Model
     public function doCreateAccount(?Site $site): User
     {
         if (!$this->supportsCreatingAccounts()) {
-            throw new Internal('Creating account is not supported');
+            throw new Internal('Creating accounts is not supported');
         }
         if ($this->externalAuthenticator) {
             return $this->externalAuthenticator->performRegistration($this->username, $this->password);
@@ -155,6 +163,8 @@ class LoginUsernamePasswordForm extends Model
         }
 
         if ($user->save()) {
+            FailedLoginAttempt::logAttempt($this->username);
+
             if ($params->confirmEmailAddresses) {
                 $user->refresh();
                 try {
@@ -240,7 +250,7 @@ class LoginUsernamePasswordForm extends Model
         $candidates = $this->getCandidates($site);
 
         if (count($candidates) === 0) {
-            FailedLoginAttempt::logFailedAttempt($this->username);
+            FailedLoginAttempt::logAttempt($this->username);
             $this->error = \Yii::t('user', 'login_err_username');
             throw new LoginInvalidUser($this->error);
         }
@@ -250,7 +260,7 @@ class LoginUsernamePasswordForm extends Model
             }
         }
 
-        FailedLoginAttempt::logFailedAttempt($this->username);
+        FailedLoginAttempt::logAttempt($this->username);
         $this->error = \Yii::t('user', 'login_err_password');
         throw new LoginInvalidPassword($this->error);
     }
@@ -261,13 +271,70 @@ class LoginUsernamePasswordForm extends Model
     public function getOrCreateUser(?Site $site): User
     {
         if (Captcha::needsCaptcha($this->username) && !Captcha::checkEnteredCaptcha($this->captcha)) {
-            throw new Login(\Yii::t('user', 'login_err_captcha'));
+            throw new Login($this->captcha ? \Yii::t('user', 'login_err_captcha') : \Yii::t('user', 'login_err_nocaptcha'));
         }
 
         if ($this->createAccount) {
             return $this->doCreateAccount($site);
         } else {
             return $this->checkLogin($site);
+        }
+    }
+
+    public function setLoggedInAwaitingEmailConfirmation(User $user): void
+    {
+        $this->session->set(self::SESSION_KEY_EMAIL_CONFIRMATION, [
+            'time' => time(),
+            'user_id' => $user->id,
+        ]);
+    }
+
+    public function hasOngoingEmailConfirmationSession(User $user): bool
+    {
+        $data = $this->session->get(self::SESSION_KEY_EMAIL_CONFIRMATION);
+        if (!$data) {
+            return false;
+        }
+        return $data['user_id'] === $user->id;
+    }
+
+    public function getOngoingEmailConfirmationSessionUser(): ?User
+    {
+        $data = $this->session->get(self::SESSION_KEY_EMAIL_CONFIRMATION);
+        if (!$data) {
+            return null;
+        }
+        return User::findOne(['id' => $data['user_id']]);
+    }
+
+    public function setLoggedInAwaitingPasswordChange(User $user): void
+    {
+        $this->session->set(self::SESSION_KEY_PWD_CHANGE, [
+            'time' => time(),
+            'user_id' => $user->id,
+        ]);
+    }
+
+    public function getOngoingPwdChangeSession(): ?User
+    {
+        $data = $this->session->get(self::SESSION_KEY_PWD_CHANGE);
+        if (!$data) {
+            return null;
+        }
+        return User::findOne(['id' => $data['user_id']]);
+    }
+
+    public function onPageView(string $controller, string $actionId): void
+    {
+        if ($controller === PagesController::class && in_array($actionId, [PagesController::VIEW_ID_FILES, PagesController::VIEW_ID_CSS])) {
+            // Could be an implicit load of custom CSS or a logo
+            return;
+        }
+        if ($controller !== UserController::class || $actionId !== UserController::VIEW_ID_LOGIN_FORCE_PWD_CHANGE) {
+            $this->session->remove(self::SESSION_KEY_PWD_CHANGE);
+        }
+        if ($controller !== UserController::class || $actionId !== UserController::VIEW_ID_LOGIN_FORCE_EMAIL_CONFIRM) {
+            $this->session->remove(self::SESSION_KEY_EMAIL_CONFIRMATION);
         }
     }
 }

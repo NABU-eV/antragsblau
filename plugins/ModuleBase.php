@@ -100,6 +100,9 @@ class ModuleBase extends Module
         return [];
     }
 
+    /**
+     * @return class-string<\app\models\forms\AdminMotionFilterForm>|null
+     */
     public static function getFullMotionListClassOverride(): ?string
     {
         return null;
@@ -117,6 +120,15 @@ class ModuleBase extends Module
     }
 
     public static function canSeeContactDetails(IMotion $imotion, ?User $user): ?bool
+    {
+        return null;
+    }
+
+    /**
+     * Called if the consultation is protected, and the user (if any) does not have privileges to access.
+     * Can be used to give grant users read-only access to certain motions.
+     */
+    public static function canAccessConsultationAsUnprivilegedUser(?User $user, Consultation $consultation, string $controllerClass, string $actionId): ?bool
     {
         return null;
     }
@@ -252,6 +264,8 @@ class ModuleBase extends Module
 
     /**
      * @param Vote[] $votes
+     *
+     * @return array<int|string, array<string, int>>|null
      */
     public static function calculateVoteResultsForApi(VotingBlock $voting, array $votes): ?array
     {
@@ -260,7 +274,6 @@ class ModuleBase extends Module
 
     /**
      * @return class-string<VotingData>|null
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
     public static function getVotingDataClass(Consultation $consultation): ?string
     {
@@ -309,6 +322,19 @@ class ModuleBase extends Module
     public static function getAdditionalIMotionStatuses(): array
     {
         return [];
+    }
+
+    /**
+     * @return array<string, string>|null
+     */
+    public static function getResolutionStatusOptions(Consultation $consultation): ?array
+    {
+        return null;
+    }
+
+    public static function getResolutionProposer(IMotion $imotion): ?string
+    {
+        return null;
     }
 
     public static function getMotionVersions(Consultation $consultation): ?array

@@ -68,13 +68,9 @@ class AmendmentSection extends IMotionSection
                 return $current;
             }
         }
-        /** @var Amendment $amendment */
         $amendment = Amendment::findOne($this->amendmentId);
-        if ($amendment) {
-            return $amendment->getMyConsultation();
-        } else {
-            return null;
-        }
+
+        return $amendment?->getMyConsultation();
     }
 
     public function rules(): array
@@ -116,7 +112,7 @@ class AmendmentSection extends IMotionSection
             if ($section->sectionId === $this->sectionId) {
                 return $first;
             }
-            if (!$section || !$section->getOriginalMotionSection()) {
+            if (!$section->getOriginalMotionSection()) {
                 throw new Internal('Did not find myself');
             }
             $first += $section->getOriginalMotionSection()->getNumberOfCountableLines();
@@ -241,6 +237,9 @@ class AmendmentSection extends IMotionSection
         return AmendmentRewriter::canRewrite($oldMotionHtml, $newMotionHtml, $this->data, $overrides);
     }
 
+    /**
+     * @return array<array{text: string, amendmentDiff: string, motionNewDiff: string, lineFrom?: int, lineTo?: int}>
+     */
     public function getRewriteCollisions(string $newMotionHtml, bool $asDiff = false, bool $debug = false): array
     {
         if ($this->getSettings()->type != ISectionType::TYPE_TEXT_SIMPLE) {

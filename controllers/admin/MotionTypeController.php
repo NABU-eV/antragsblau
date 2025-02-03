@@ -2,16 +2,17 @@
 
 namespace app\controllers\admin;
 
+use app\views\pdfLayouts\IPDFLayout;
 use app\components\{DateTools, UrlHelper};
 use app\models\db\{ConsultationMotionType, ConsultationSettingsMotionSection, ConsultationUserGroup, TexTemplate, User};
-use app\models\exceptions\ExceptionBase;
-use app\models\exceptions\FormError;
+use app\models\exceptions\{ExceptionBase, FormError};
 use app\models\forms\DeadlineForm;
 use app\models\http\{HtmlErrorResponse, HtmlResponse, RedirectResponse, ResponseInterface};
 use app\models\motionTypeTemplates\Application as ApplicationTemplate;
 use app\models\motionTypeTemplates\Motion as MotionTemplate;
 use app\models\motionTypeTemplates\PDFApplication as PDFApplicationTemplate;
 use app\models\motionTypeTemplates\Statutes as StatutesTemplate;
+use app\models\motionTypeTemplates\ProgressReport as ProgressReportTemplate;
 use app\models\policies\{All, IPolicy, Nobody, UserGroups};
 use app\models\settings\{InitiatorForm, MotionSection, MotionType, Privileges};
 use app\models\supportTypes\SupportBase;
@@ -126,11 +127,11 @@ class MotionTypeController extends AdminBase
             $motionType->setAllDeadlines($deadlineForm->generateDeadlineArray());
 
             $pdfTemplate = $this->getHttpRequest()->post('pdfTemplate', '');
-            if (str_starts_with($pdfTemplate, 'php')) {
-                $motionType->pdfLayout     = intval(str_replace('php', '', $pdfTemplate));
-                $motionType->texTemplateId = null;
-            } elseif ($pdfTemplate) {
-                $motionType->texTemplateId = intval($pdfTemplate);
+            foreach (IPDFLayout::getSelectablePdfLayouts() as $layout) {
+                if ($layout->getHtmlId() === $pdfTemplate) {
+                    $motionType->pdfLayout = $layout->id ?? 0;
+                    $motionType->texTemplateId = $layout->latexId;
+                }
             }
 
             $motionType->motionLikesDislikes = 0;
@@ -169,6 +170,13 @@ class MotionTypeController extends AdminBase
                 $settings->initiatorCanBeOrganization = true;
                 $settings->initiatorCanBePerson       = true;
             }
+            if (isset($input['initiatorSetPermissions'])) {
+                $settings->setInitiatorPersonPolicyObject($this->getPolicyFromUpdateData($motionType, $input['initiatorPersonPolicy']));
+                $settings->setInitiatorOrganizationPolicyObject($this->getPolicyFromUpdateData($motionType, $input['initiatorOrgaPolicy']));
+            } else {
+                $settings->setInitiatorPersonPolicyObject(new All($this->consultation, $settings, null));
+                $settings->setInitiatorOrganizationPolicyObject(new All($this->consultation, $settings, null));
+            }
             $motionType->supportTypeMotions = json_encode($settings, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
 
             if ($this->isPostSet('sameInitiatorSettingsForAmendments')) {
@@ -186,6 +194,13 @@ class MotionTypeController extends AdminBase
                     // Probably a mistake
                     $settings->initiatorCanBeOrganization = true;
                     $settings->initiatorCanBePerson       = true;
+                }
+                if (isset($input['amendmentInitiatorSetPermissions'])) {
+                    $settings->setInitiatorPersonPolicyObject($this->getPolicyFromUpdateData($motionType, $input['amendmentInitiatorPersonPolicy']));
+                    $settings->setInitiatorOrganizationPolicyObject($this->getPolicyFromUpdateData($motionType, $input['amendmentInitiatorOrgaPolicy']));
+                } else {
+                    $settings->setInitiatorPersonPolicyObject(new All($this->consultation, $settings, null));
+                    $settings->setInitiatorOrganizationPolicyObject(new All($this->consultation, $settings, null));
                 }
                 if (is_numeric($this->getHttpRequest()->post('maxPdfSupporters'))) {
                     $settings->maxPdfSupporters = intval($this->getPostValue('maxPdfSupporters'));
@@ -281,6 +296,9 @@ class MotionTypeController extends AdminBase
             } elseif (isset($type['preset']) && $type['preset'] === 'statute') {
                 $motionType = StatutesTemplate::doCreateStatutesType($this->consultation);
                 StatutesTemplate::doCreateStatutesSections($motionType);
+            } elseif (isset($type['preset']) && $type['preset'] === 'progress') {
+                $motionType = ProgressReportTemplate::doCreateProgressType($this->consultation);
+                ProgressReportTemplate::doCreateProgressSections($motionType);
             } else {
                 $motionType = null;
                 foreach ($this->consultation->motionTypes as $cType) {
@@ -327,13 +345,6 @@ class MotionTypeController extends AdminBase
             $motionType->titlePlural   = $type['titlePlural'];
             $motionType->createTitle   = $type['createTitle'];
             $motionType->motionPrefix  = substr($type['motionPrefix'], 0, 10);
-
-            if (str_starts_with($type['pdfLayout'], 'php')) {
-                $motionType->pdfLayout     = intval(str_replace('php', '', $type['pdfLayout']));
-                $motionType->texTemplateId = null;
-            } elseif ($type['pdfLayout']) {
-                $motionType->texTemplateId = intval($type['pdfLayout']);
-            }
 
             if (!$motionType->save()) {
                 var_dump($motionType->getErrors());

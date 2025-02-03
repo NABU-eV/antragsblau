@@ -14,7 +14,7 @@ $motionType   = $amendment->getMyMotionType();
 $html        = '<ul class="sidebarActions" aria-label="' . Html::encode(Yii::t('amend', 'sidebar_title_aria')) . '">';
 $sidebarRows = 0;
 
-if ($motionType->getPDFLayoutClass() !== null && $amendment->isVisible()) {
+if ($motionType->hasPdfLayout() && $amendment->isVisible()) {
     $html .= '<li class="download">';
     $title = '<span class="icon glyphicon glyphicon-download-alt" aria-hidden="true"></span>' .
         Yii::t('motion', 'download_pdf');
@@ -60,11 +60,11 @@ if ($amendment->getMyMotionType()->getSettingsObj()->allowAmendmentsToAmendments
         $sidebarRows++;
     } catch (\app\models\exceptions\NotAmendable $e) {
         if ($e->isMessagePublic()) {
-            $createLi = '<li class="amendmentCreate deactivated">';
+            $createLi = '<div class="amendmentCreate deactivated">';
             $createLi .= '<span><span class="icon glyphicon glyphicon-flash" aria-hidden="true"></span>';
             $createLi .= Html::encode(Yii::t('motion', 'amendment_create_based_on_amend'));
             $createLi .= '<br><span class="deactivatedMsg">';
-            $createLi .= Html::encode($e->getMessage()) . '</span></span></li>';
+            $createLi .= Html::encode($e->getMessage()) . '</span></span></div>';
 
             $html .= $createLi;
             $layout->menusHtmlSmall[] = $createLi;

@@ -2,6 +2,7 @@
 
 namespace app\models\db;
 
+use app\models\forms\MotionDeepCopy;
 use app\models\policies\Nobody;
 use CatoTH\HTML2OpenDocument\Text;
 use app\components\{DateTools, Tools, UrlHelper};
@@ -9,8 +10,7 @@ use app\models\settings\{AntragsgruenApp, InitiatorForm, Layout, MotionType};
 use app\models\policies\IPolicy;
 use app\models\supportTypes\SupportBase;
 use app\views\pdfLayouts\IPDFLayout;
-use yii\db\ActiveQuery;
-use yii\db\ActiveRecord;
+use yii\db\{ActiveQuery, ActiveRecord};
 
 /**
  * @property int|null $id
@@ -123,6 +123,16 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
             ->orderBy('position');
     }
 
+    public function getSectionById(int $sectionId): ?ConsultationSettingsMotionSection
+    {
+        foreach ($this->motionSections as $section) {
+            if ($section->id === $sectionId) {
+                return $section;
+            }
+        }
+        return null;
+    }
+
     public function getAgendaItems(): ActiveQuery
     {
         return $this->hasMany(ConsultationAgendaItem::class, ['motionTypeId' => 'id']);
@@ -205,13 +215,19 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
         return SupportBase::getImplementation($settings, $this);
     }
 
+    public function hasPdfLayout(): bool
+    {
+        $layout = IPDFLayout::getPdfLayoutForMotionType($this);
+        return $layout->id !== IPDFLayout::LAYOUT_NONE;
+    }
+
     public function getPDFLayoutClass(): ?IPDFLayout
     {
-        $class = IPDFLayout::getClassById($this->pdfLayout);
-        if ($class === null) {
+        $layout = IPDFLayout::getClassById($this->pdfLayout);
+        if ($layout === null || $layout->className === null || !is_subclass_of($layout->className, IPDFLayout::class)) {
             return null;
         }
-        return new $class($this);
+        return new $layout->className($this);
     }
 
     public function getOdtTemplateFile(): string
@@ -437,39 +453,19 @@ class ConsultationMotionType extends ActiveRecord implements IHasPolicies
         }
     }
 
-    public function isCompatibleTo(ConsultationMotionType $cmpMotionType): bool
+    public function isCompatibleTo(ConsultationMotionType $cmpMotionType, array $skip): bool
     {
-        $mySections  = $this->motionSections;
-        $cmpSections = $cmpMotionType->motionSections;
-
-        if (count($mySections) !== count($cmpSections)) {
-            return false;
-        }
-        for ($i = 0; $i < count($mySections); $i++) {
-            if ($mySections[$i]->type !== $cmpSections[$i]->type) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public function getSectionCompatibilityMapping(ConsultationMotionType $cmpMotionType): array
-    {
-        $mapping = [];
-        for ($i = 0; $i < count($this->motionSections); $i++) {
-            $mapping[$this->motionSections[$i]->id] = $cmpMotionType->motionSections[$i]->id;
-        }
-        return $mapping;
+        return (MotionDeepCopy::getMotionSectionMapping($this, $cmpMotionType, $skip) !== null);
     }
 
     /**
      * @return ConsultationMotionType[]
      */
-    public function getCompatibleMotionTypes(): array
+    public function getCompatibleMotionTypes(array $skip): array
     {
         $compatible = [];
         foreach ($this->getConsultation()->motionTypes as $motionType) {
-            if ($motionType->isCompatibleTo($this)) {
+            if ($this->isCompatibleTo($motionType, $skip)) {
                 $compatible[] = $motionType;
             }
         }

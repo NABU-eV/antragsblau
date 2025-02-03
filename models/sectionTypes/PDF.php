@@ -1,9 +1,8 @@
 <?php
 
 namespace app\models\sectionTypes;
-
-use app\components\{latex\Content, Tools, UrlHelper};
-use app\models\db\{Consultation, MotionSection};
+use app\components\{latex\Content as LatexContent, html2pdf\Content as HtmlToPdfContent, Tools, UrlHelper};
+use app\models\db\{Consultation, ConsultationSettingsMotionSection, MotionSection};
 use app\models\exceptions\FormError;
 use app\models\settings\AntragsgruenApp;
 use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
@@ -51,17 +50,23 @@ class PDF extends ISectionType
         $url  = $this->getPdfUrl();
         $str  = '<section class="section' . $this->section->sectionId . ' type' . static::TYPE_PDF_ATTACHMENT . '">';
         $str .= '<div class="form-group">';
+
         $str .= $this->getFormLabel();
+        $str .= $this->getHintsAfterFormLabel();
 
         if ($url) {
-            $required = false;
+            $required = '';
         } else {
-            $required = ($type->required ? 'required' : '');
+            $required = match($type->required) {
+                ConsultationSettingsMotionSection::REQUIRED_YES => 'required',
+                ConsultationSettingsMotionSection::REQUIRED_ENCOURAGED => 'data-encouraged="true"',
+                default => '',
+            };
         }
 
-        $maxSize = floor(Tools::getMaxUploadSize() / 1024 / 1024);
+        $maxSize = (int)floor(Tools::getMaxUploadSize() / 1024 / 1024);
         $str     .= '<div class="maxLenHint"><span class="icon glyphicon glyphicon-info-sign" aria-hidden="true"></span> ';
-        $str     .= str_replace('%MB%', $maxSize, \Yii::t('motion', 'max_size_hint'));
+        $str     .= str_replace('%MB%', (string)$maxSize, \Yii::t('motion', 'max_size_hint'));
         $str     .= '</div>';
 
         $str .= '<input type="file" class="form-control" id="sections_' . $type->id . '" ' . $required .
@@ -71,7 +76,7 @@ class PDF extends ISectionType
             $str .= '<a href="' . Html::encode($this->getPdfUrl()) . '" class="currentPdf">';
             $str .= \Yii::t('motion', 'pdf_current') . '</a>';
         }
-        if ($url && !$type->required) {
+        if ($url && $type->required !== ConsultationSettingsMotionSection::REQUIRED_YES) {
             $str .= '<label class="deletePdf"><input type="checkbox" name="sectionDelete[' . $type->id . ']">';
             $str .= \Yii::t('motion', 'pdf_delete');
             $str .= '</label>';
@@ -102,8 +107,8 @@ class PDF extends ISectionType
         $metadata                = [
             'filesize' => filesize($data['tmp_name']),
         ];
-        $this->section->setData(file_get_contents($data['tmp_name']));
-        $this->section->metadata = json_encode($metadata);
+        $this->section->setData((string)file_get_contents($data['tmp_name']));
+        $this->section->metadata = json_encode($metadata, JSON_THROW_ON_ERROR);
     }
 
     public function deleteMotionData(): void
@@ -158,6 +163,11 @@ class PDF extends ISectionType
         return ($this->section->getData() === '');
     }
 
+    public function showIfEmpty(): bool
+    {
+        return false;
+    }
+
     public function isFileUploadType(): bool
     {
         return true;
@@ -206,6 +216,8 @@ class PDF extends ISectionType
 
         for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
             $page = $pdf->ImportPage($pageNo);
+
+            /** @var array{width: float, height: float, orientation: string} $dim */
             $dim  = $pdf->getTemplatesize($page);
             if ($params->pdfExportConcat) {
                 $pdf->AddPage($dim['width'] > $dim['height'] ? 'L' : 'P', [$dim['width'], $dim['height']], false);
@@ -213,12 +225,12 @@ class PDF extends ISectionType
             } else {
                 $scale = min([
                     1,
-                    $printArea['w'] / $dim['w'],
-                    $printArea['h'] / $dim['h'],
+                    $printArea['w'] / $dim['width'],
+                    $printArea['h'] / $dim['height'],
                 ]);
                 $print = [
-                    'w' => $scale * $dim['w'],
-                    'h' => $scale * $dim['h'],
+                    'w' => $scale * $dim['width'],
+                    'h' => $scale * $dim['height'],
                 ];
                 $curX  = $pdf->getX();
                 if ($curX > $pdim['lm'] and $print['w'] < $pdim['wk'] - ($curX + $pdim['rm'])) {
@@ -259,12 +271,10 @@ class PDF extends ISectionType
                             if (in_array(substr($key, -1), ['u', 'l'])) {
                                 $length = -$length;
                             }
-                            if (!$abs) {
-                                if (in_array(substr($key, -1), ['r', 'l'])) {
-                                    $length = $length * $print['w'];
-                                } else {
-                                    $length = $length * $print['h'];
-                                }
+                            if (in_array(substr($key, -1), ['r', 'l'])) {
+                                $length = $length * $print['w'];
+                            } else {
+                                $length = $length * $print['h'];
                             }
                             $larr = [];
                             if (in_array(substr($key, -1), ['u', 'd'])) {
@@ -274,7 +284,7 @@ class PDF extends ISectionType
                                 $larr['x'] = $length;
                                 $larr['y'] = 0;
                             }
-                            if (substr($key, 0, 1) == 't') {
+                            if (str_starts_with($key, 't')) {
                                 $line['y'] = $print['y'];
                             } else {
                                 $line['y'] = $print['y'] + $print['h'];
@@ -311,7 +321,7 @@ class PDF extends ISectionType
         return '[PDF]';
     }
 
-    public function printMotionTeX(bool $isRight, Content $content, Consultation $consultation): void
+    public function printMotionTeX(bool $isRight, LatexContent $content, Consultation $consultation): void
     {
         if ($this->isEmpty()) {
             return;
@@ -326,9 +336,19 @@ class PDF extends ISectionType
         }
     }
 
-    public function printAmendmentTeX(bool $isRight, Content $content): void
+    public function printAmendmentTeX(bool $isRight, LatexContent $content): void
     {
         // @TODO
+    }
+
+    public function printMotionHtml2Pdf(bool $isRight, HtmlToPdfContent $content, Consultation $consultation): void
+    {
+        // TODO: Implement printMotionHtml2Pdf() method.
+    }
+
+    public function printAmendmentHtml2Pdf(bool $isRight, HtmlToPdfContent $content): void
+    {
+        // TODO: Implement printAmendmentHtml2Pdf() method.
     }
 
     public function getMotionODS(): string

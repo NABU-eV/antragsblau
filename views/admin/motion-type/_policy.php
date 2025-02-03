@@ -1,7 +1,7 @@
 <?php
 
 use app\components\HTMLTools;
-use app\models\db\{ConsultationMotionType, ConsultationUserGroup};
+use app\models\db\ConsultationMotionType;
 use app\models\policies\IPolicy;
 use app\models\supportTypes\SupportBase;
 use yii\helpers\Html;
@@ -16,39 +16,10 @@ foreach (IPolicy::getPolicies() as $policy) {
     $policies[$policy::getPolicyID()] = $policy::getPolicyName();
 }
 
-$printUserGroupSelector = function (string $id, string $formName, ConsultationMotionType $motionType, IPolicy $currentPolicy) {
-    if (ConsultationUserGroup::consultationHasLoadableUserGroups($motionType->getConsultation())) {
-        $groupLoadUrl = \app\components\UrlHelper::createUrl('/admin/users/search-groups');
-    } else {
-        $groupLoadUrl = '';
-    }
-    if (is_a($currentPolicy, \app\models\policies\UserGroups::class)) {
-        $preselectedUserGroupsIds = array_map(function (ConsultationUserGroup $group): int { return $group->id; }, $currentPolicy->getAllowedUserGroups());
-    } else {
-        $preselectedUserGroupsIds = [];
-    }
-    ?>
-    <div class="userGroupSelect" data-load-url="<?= Html::encode($groupLoadUrl) ?>">
-        <select id="<?= $id ?>" name="type[<?= $formName ?>][groups][]" multiple
-                placeholder="<?= Yii::t('admin', 'motion_type_group_ph') ?>" title="<?= Yii::t('admin', 'motion_type_group_title') ?>">
-            <?php
-            foreach ($motionType->getConsultation()->getAllAvailableUserGroups($preselectedUserGroupsIds) as $group) {
-                echo '<option value="' . $group->id . '"';
-                if (is_a($currentPolicy, \app\models\policies\UserGroups::class) && $currentPolicy->allowsUserGroup($group)) {
-                    echo ' selected';
-                }
-                echo '>';
-                echo Html::encode($group->getNormalizedTitle());
-                echo '</option>';
-            }
-            ?>
-        </select>
-    </div>
-    <?php
-}
-
 ?>
-<h2 class="h3"><?= Yii::t('admin', 'motion_type_perm') ?></h2>
+<section aria-labelledby="motionTypePermissionTitle">
+<h2 class="green" id="motionTypePermissionTitle"><?= Yii::t('admin', 'motion_type_perm') ?></h2>
+<div class="content">
 
 <!-- Policy for creating motions -->
 
@@ -65,7 +36,7 @@ $printUserGroupSelector = function (string $id, string $formName, ConsultationMo
             $policies,
             ['id' => 'typePolicyMotions', 'class' => 'stdDropdown policySelect']
         );
-        $printUserGroupSelector('typePolicyMotionsGroups', 'policyMotions', $motionType, $currentPolicy);
+        echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typePolicyMotionsGroups', 'formName' => 'type[policyMotions]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
         ?>
     </div>
 </div>
@@ -86,7 +57,7 @@ $printUserGroupSelector = function (string $id, string $formName, ConsultationMo
             $policies,
             ['id' => 'typePolicySupportMotions', 'class' => 'stdDropdown policySelect']
         );
-        $printUserGroupSelector('typePolicySupportMotionsGroups', 'policySupportMotions', $motionType, $currentPolicy);
+        echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typePolicySupportMotionsGroups', 'formName' => 'type[policySupportMotions]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
         ?>
     </div>
 </div>
@@ -144,7 +115,7 @@ $printUserGroupSelector = function (string $id, string $formName, ConsultationMo
             $policies,
             ['id' => 'typePolicyAmendments', 'class' => 'stdDropdown policySelect']
         );
-        $printUserGroupSelector('typePolicyAmendmentsGroups', 'policyAmendments', $motionType, $currentPolicy);
+        echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typePolicyAmendmentsGroups', 'formName' => 'type[policyAmendments]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
         ?>
     </div>
 </div>
@@ -199,7 +170,7 @@ $printUserGroupSelector = function (string $id, string $formName, ConsultationMo
             $policies,
             ['id' => 'typePolicySupportAmendments', 'class' => 'stdDropdown policySelect']
         );
-        $printUserGroupSelector('typePolicySupportAmendmentsGroups', 'policySupportAmendments', $motionType, $currentPolicy);
+        echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typePolicySupportAmendmentsGroups', 'formName' => 'type[policySupportAmendments]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
         ?>
     </div>
 </div>
@@ -258,7 +229,7 @@ $printUserGroupSelector = function (string $id, string $formName, ConsultationMo
             $policies,
             ['id' => 'typePolicyComments', 'class' => 'stdDropdown policySelect']
         );
-        $printUserGroupSelector('typePolicyCommentsGroups', 'policyComments', $motionType, $currentPolicy);
+        echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typePolicyCommentsGroups', 'formName' => 'type[policyComments]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
         ?>
     </div>
 </div>
@@ -326,5 +297,5 @@ $printUserGroupSelector = function (string $id, string $formName, ConsultationMo
     </div>
 </div>
 
-<?php
-?>
+</div>
+</section>

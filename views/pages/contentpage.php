@@ -7,6 +7,7 @@
  */
 
 use app\components\UrlHelper;
+use app\models\policies\IPolicy;
 use app\models\db\{ConsultationText, User};
 use yii\helpers\Html;
 
@@ -14,7 +15,7 @@ use yii\helpers\Html;
 $controller = $this->context;
 
 $consultation = UrlHelper::getCurrentConsultation();
-$site         = ($consultation ? $consultation->site : null);
+$site         = $consultation?->site;
 $pageData     = ConsultationText::getPageData($site, $consultation, $pageKey);
 $saveUrl      = $pageData->getSaveUrl();
 
@@ -25,6 +26,13 @@ if (!in_array($controller->action->id, ['home', 'index'])) {
     $layout->addBreadcrumb($pageData->breadcrumb ?: $pageData->textId);
 } else {
     $layout->breadcrumbs = [];
+}
+
+if ($pageData->textId === ConsultationText::DEFAULT_PAGE_WELCOME) {
+    $files = $consultation->getDownloadableFiles(null); // Legacy
+} else {
+    $fileGroup = $pageData->getMyFileGroup();
+    $files = ($fileGroup ? $consultation->getDownloadableFiles($fileGroup->id) : []);
 }
 
 if (User::getCurrentUser() && $pageData->isCustomPage()) {
@@ -48,11 +56,14 @@ echo '<div class="primaryHeader"><h1 class="pageTitle">' . Html::encode($pageDat
 
 if ($admin) {
     $layout->loadCKEditor();
+    $layout->loadSelectize();
 
     echo Html::beginForm($saveUrl, 'post', [
         'class'                    => 'contentEditForm',
         'data-upload-url'          => $pageData->getUploadUrl(),
         'data-image-browse-url'    => $pageData->getImageBrowseUrl(),
+        'data-file-delete-url'     => $pageData->getFileDeleteUrl(),
+        'data-del-confirmation'    => Yii::t('admin', 'files_download_del_c'),
         'data-antragsgruen-widget' => 'frontend/ContentPageEdit',
         'data-text-selector'       => '#stdTextHolder',
         'data-save-selector'       => '.textSaver',
@@ -61,22 +72,16 @@ if ($admin) {
 
     if (!in_array($pageData->textId, array_keys(ConsultationText::getDefaultPages()))) {
         ?>
-        <section class="contentSettingsToolbar toolbarBelowTitle row form-inline hidden">
-            <div class="col-md-4 textfield">
-                <div class="form-group">
-                    <label for="contentUrl"><?= Yii::t('pages', 'settings_url') ?>:</label>
-                    <input type="text" class="form-control" name="url" value="<?= Html::encode($pageData->textId) ?>"
-                           required id="contentUrl">
-                </div>
+        <section class="contentSettingsToolbar toolbarBelowTitle hidden">
+            <div class="textfield">
+                <label for="contentUrl"><?= Yii::t('pages', 'settings_url') ?>:</label>
+                <input type="text" class="form-control" name="url" value="<?= Html::encode($pageData->textId) ?>" required id="contentUrl">
             </div>
-            <div class="col-md-4 textfield">
-                <div class="form-group">
-                    <label for="contentTitle"><?= Yii::t('pages', 'settings_title') ?>:</label>
-                    <input type="text" class="form-control" name="title" value="<?= Html::encode($pageData->title) ?>"
-                           required id="contentTitle" maxlength="30">
-                </div>
+            <div class="textfield">
+                <label for="contentTitle"><?= Yii::t('pages', 'settings_title') ?>:</label>
+                <input type="text" class="form-control" name="title" value="<?= Html::encode($pageData->title) ?>" required id="contentTitle" maxlength="30">
             </div>
-            <div class="col-md-4 options">
+            <div class="options">
                 <label>
                     <?= Html::checkbox('allConsultations', ($pageData->consultationId === null)) ?>
                     <?= Yii::t('pages', 'settings_allcons') ?>
@@ -88,9 +93,33 @@ if ($admin) {
             </div>
         </section>
         <?php
-    }
+        if ($pageData->consultationId !== null) {
+        ?>
 
-    echo Html::endForm();
+        <section class="policyToolbarBelowTitle hidden policyWidget">
+            <label class="title" for="policyReadPage">
+                Lesezugriff:
+            </label>
+            <div class="policySelectHolder">
+            <?php
+            $policies = [];
+            foreach (IPolicy::getPolicies() as $policy) {
+                $policies[$policy::getPolicyID()] = $policy::getPolicyName();
+            }
+            $currentPolicy = $pageData->getReadPolicy();
+            echo Html::dropDownList(
+                'policyReadPage[id]',
+                $currentPolicy::getPolicyID(),
+                $policies,
+                ['id' => 'policyReadPage', 'class' => 'stdDropdown policySelect']
+            );
+            ?>
+            </div>
+            <?= $this->render('@app/views/shared/usergroup_selector', ['id' => 'policyReadPageGroups', 'formName' => 'policyReadPage', 'consultation' => $consultation, 'currentPolicy' => $currentPolicy]) ?>
+        </section>
+        <?php
+        }
+    }
 }
 
 
@@ -103,6 +132,13 @@ if ($admin) {
 $contentMain .= '<article class="textHolder" id="stdTextHolder">';
 $contentMain .= $pageData->text;
 $contentMain .= '</article>';
+
+if ($pageData->getMyConsultation()) {
+    $contentMain .= $this->render('@app/views/pages/_content_files', [
+        'contentAdmin' => $admin,
+        'files' => $files,
+    ]);
+}
 
 if ($admin) {
     $contentMain .= '<div class="textSaver hidden">';
@@ -117,6 +153,8 @@ $contentMain = \app\models\layoutHooks\Layout::getContentPageContent($pageData, 
 echo $contentMain;
 
 if ($admin) {
+    echo Html::endForm();
+
     $deleteUrl = UrlHelper::createUrl(['pages/delete-page', 'pageSlug' => $pageData->textId]);
     echo Html::beginForm($deleteUrl, 'post', ['class' => 'deletePageForm']);
     echo '<input type="hidden" name="delete" value="delete">';

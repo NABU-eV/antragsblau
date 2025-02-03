@@ -1,5 +1,77 @@
 # Version history
 
+## Version 4.15.0 (2024-11-30)
+
+- Several improvements for user account administration:
+  - User accounts can now be protected using Two-Factor-Authentication through TOTP. For individual users or all users of dedicated installations, this can be enforced.
+  - Admins can now delete user accounts.
+  - Admins can now prevent specific user accounts from changing their password, e.g. if it is supposed to be a shared user account where admins manage the password.
+  - Admins can now enforce users to change their password the first / next time they log in.
+  - Admins can now disable the functions for users without access to a consultation to request access.
+  - Users that didn't receive the initial account confirmation e-mail can now request another confirmation e-mail after an hour.
+- When going to the Terms and Conditions and/or the Privacy page and back, you will end up in the same consultation than before now.
+- Custom input fields in motion forms can now have explanations. They can also be set to be "encouraged but not required" - that is, the user can skip them but will get a warning if they do so.
+- Content pages can now have attached files, just like the welcome text on the home page.
+- Access to content pages can now be restricted to logged in users, admins or specific user groups.
+- When merging amendments into a motion, the default setting now is to create a resolution, not a new motion.
+- Security improvement: When logging in, and a new verion of PHP (like 8.4) suggests a stronger default password hashing, the stored hash is updated accordingly.
+- A new translation is provided: Montenegrin (thanks to Danilo Boskovic)
+- Administrators of an installation can modify the behavior of the CAPTCHAs on registration (see README).
+- Some compatibility issues with PHP 8.4 were resolved.
+- Bugfix: Tabular data was not encoded correctly in the PHP-based PDF export.
+- Bugfix: The setting to open (PDF-)files in new browser tabs was not considered at several places.
+- Bugfix: The PDF with all amendments embedded into the motion text could not be generated if a Weasyprint-based PDF layout was selected.
+- Bugfix: If a motion with a proposed modified version was copied, merging that proposed version was not possible anymore.
+- Bugfix: It was possible for users to submit amendments for withdrawn motions.
+- Bugfix: When using "previous / next motion" links for pagination, motions and resolutions were not properly separated.
+- Bugfix: Some Youtube-Videos could not be embedded.
+- Bugfix: When copying a consultation with motion types whose permissions were restricted to a specific user group, these permissions where not properly copied.
+- Bugfix: If an uploaded logo was deleted, the shown logo was broken instead of falling back to the default logo.
+
+### Version 4.14.2 (2024-09-08)
+
+- Security advisory x41-2024-002:
+  - Illegitimate content could be stored in the motion reason. (CVE-2024-46884. Credit: X41 D-Sec GmbH, Eric Sesterhenn)
+  - Redirects to external pages could be injected. (CVE-2024-46882. Credit: X41 D-Sec GmbH, Eric Sesterhenn)
+  - E-Mail verification after signup could be bypassed. (CVE-2024-46883. Credit: X41 D-Sec GmbH, Yassine El Baaj)
+  - E-Mail verification after e-mail change could be bypassed. (CVE-2024-46883. Credit: X41 D-Sec GmbH, Yassine El Baaj, JM)
+- Bugfix: The PDF-export of all amendments was not working.
+- Bugfix: The PDF-export of amendments with proposed procedure was not working when using Weasyprint.
+
+### Version 4.14.1 (2024-08-25)
+
+- If a filter is set in the motion list, this will also filter the motions to be exported in the export row above (PDFs, ODTs, ODS etc.).
+- Setting a modified proposed procedure is now more streamlined, as changing the proposed status to "Accepted (modified)" now directly brings one to entering the modified text, and saving it will lead back to the motion / amendment.
+- Bugfix: The PDF export with included proposed procedures was sometimes broken.
+- Bugfix: Publishing proposed procedures from the admin list only worked for amendments, not for motions.
+- Bugfix: When multiple versions of a motion exist, the ODT / PDF export list showed all versions, instead of only the newest one.
+- Bugfix: If a motion replaces one of a different consultation, editing as an admin removed the connection between these two motion versions.
+- Bugfix: Merging amendments into a motion was broken if the motion's proposed status had a proposed change but then changed to another proposed status.
+
+## Version 4.14.0 (2024-05-20)
+
+- A new default motion type template exists, "progress report". It includes a resolution and a progress section. The latter can be edited inline from the document view by administrative users. An editorial group of user can be defined that has permissions to edit these progress report section without having any other addition administrative privileges.
+- Super-admins can now change the e-mail-address / logins of registered users, not only their passwords.
+- If the home page layout "Tags" is used, it is now possible to show only the list of tags, and the actual motions on tag-specific sub-pages. This is mostly aimed towards consultations with hundreds of motions.
+- Optionally, "previous motion" and "next motion" links can be activated on motions, to enable browsing through the motions without having to go back to the home page.
+- The admin motion list can now be filtered by motion type.
+- For list votings where a number of options are presented to vote on and delegates can choose which one to vote for, there is now also an option to allow an explicit "General Abstention" to explicitly vote for none of the given options.
+- Exporting "Inactive" motions and amendments from the admin motion list now also includes unpublished items.
+- Users can be assigned a voting weights, for example if they represent multiple delegates. If so, their vote counts as multiple votes.
+- For creating motions and/or amendments, the two options to create it as single delegate or organization can new each be restricted to specific user groups.
+- The custom theme editor now also allows to (un)set the boldess, upper-casing and text shadows of headings.
+- For newly created application motion types, the signature is now optional and the gender field is not automatically generated anymore.
+- It is now possible to set no agenda item for motions.
+- Redis support for caching is now bundled in the default Antragsgrün distribution, so no need to manually install packages anymore. The setup can be done in the config.json.
+- LaTeX will be deprecated for rendering PDFs. Instead, a new rendering based on Weasyprint is introduced, that should handle several edge cases better and will make it easier to customize PDF layouts. The default PHP-based PDF renderer will remain unchanged.
+- The internal caching system has been optimized, preventing parallel processes generating the same cache, which might overload systems with a high number of users after cache invalidation.
+- For very large consultations (1.000 motions/amendments or more), setting the viewCacheFilePath option in config.json now optimizes several aspects and is an officially recommended setting.
+- Bugfix: Some texts were not properly escaped, allowing XSS by consultation admins.
+- Bugfix: The "Allow more supporters than required" could not be deactivated for support collection phases before publication.
+- Bugfix: Several issues with the predefined organisation list for user administration were fixed.
+- Bugfix: CAPTCHAs were sometimes hardly readable.
+- Bugfix: In the support collecting page, for amendments, the required supporters of motions were shown, not of amendments.
+
 ### Version 4.13.2 (2024-02-18)
 
 - Bugfix: the version check in the editor that lead to warnings is now disabled.

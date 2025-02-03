@@ -8,7 +8,10 @@ ob_start();
     <div v-if="!showVotesByUserGroups" class="regularVoteList" v-for="answer in voting.answers">
         <strong>{{ answer.title }}:</strong>
         <ul>
-            <li v-for="vote in getVoteListVotes(answer.api_id)">{{ vote.user_name }}</li>
+            <li v-for="vote in getVoteListVotes(answer.api_id)">
+                {{ vote.user_name }}
+                <span v-if="vote.weight > 1" class="voteWeight">(×{{ vote.weight }})</span>
+            </li>
         </ul>
     </div>
 
@@ -23,7 +26,10 @@ ob_start();
                     <span v-if="getVoteListForUserGroup(answer.api_id, userGroup).length > 0">({{ getVoteListForUserGroup(answer.api_id, userGroup).length }})</span>
                 </div>
                 <ul>
-                    <li v-for="vote in getVoteListForUserGroup(answer.api_id, userGroup)">{{ vote.user_name }}</li>
+                    <li v-for="vote in getVoteListForUserGroup(answer.api_id, userGroup)">
+                        {{ vote.user_name }}
+                        <span v-if="vote.weight > 1" class="voteWeight">(×{{ vote.weight }})</span>
+                    </li>
                     <li v-if="getVoteListForUserGroup(answer.api_id, userGroup).length === 0" class="none">
                         <?= Yii::t('voting', 'voting_votes_0') ?>
                     </li>
@@ -47,6 +53,16 @@ ob_start();
         </ul>
     </div>
 
+    <div v-if="voting.has_general_abstention" class="regularVoteList">
+        <strong><?= Yii::t('voting', 'vote_abstain') ?>:</strong>
+        <ul>
+            <li v-for="user in voting.abstention_users">{{ user.user_name }}</li>
+            <li v-if="voting.abstention_users.length === 0" class="none">
+                <?= Yii::t('voting', 'voting_notvoted_0') ?>
+            </li>
+        </ul>
+    </div>
+
     <div v-if="showNotVotedList && hasVoteEligibilityList" class="regularVoteList notVotedList">
         <strong v-if="voting.status === STATUS_CLOSED_PUBLISHED || voting.status === STATUS_CLOSED_UNPUBLISHED"><?= Yii::t('voting', 'voting_notvoted') ?></strong>
         <strong v-if="voting.status !== STATUS_CLOSED_PUBLISHED && voting.status !== STATUS_CLOSED_UNPUBLISHED"><?= Yii::t('voting', 'voting_notvoted_yet') ?></strong>
@@ -57,7 +73,10 @@ ob_start();
                     <span v-if="getNotVotedListForUserGroup(userGroup).length > 0">({{ getNotVotedListForUserGroup(userGroup).length }})</span>
                 </div>
                 <ul>
-                    <li v-for="user in getNotVotedListForUserGroup(userGroup)">{{ user.user_name }}</li>
+                    <li v-for="user in getNotVotedListForUserGroup(userGroup)">
+                        {{ user.user_name }}
+                        <span v-if="user.weight > 1" class="voteWeight">(×{{ user.weight }})</span>
+                    </li>
                     <li v-if="getNotVotedListForUserGroup(userGroup).length === 0" class="none">
                         <?= Yii::t('voting', 'voting_notvoted_0') ?>
                     </li>

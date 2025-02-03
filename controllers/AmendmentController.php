@@ -4,6 +4,7 @@ namespace app\controllers;
 
 use app\models\consultationLog\ProposedProcedureChange;
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
+use app\views\pdfLayouts\IPDFLayout;
 use app\models\http\{BinaryFileResponse,
     HtmlErrorResponse,
     HtmlResponse,
@@ -12,11 +13,11 @@ use app\models\http\{BinaryFileResponse,
     ResponseInterface,
     RestApiExceptionResponse,
     RestApiResponse};
-use app\components\{HTMLTools, Tools, UrlHelper};
-use app\models\db\{Amendment, AmendmentAdminComment, AmendmentSupporter, ConsultationLog, ISupporter, Motion, User};
+use app\components\{HTMLTools, IMotionStatusFilter, Tools, UrlHelper};
+use app\models\db\{Amendment, AmendmentAdminComment, AmendmentSupporter, ConsultationLog, IMotion, ISupporter, Motion, User};
 use app\models\events\AmendmentEvent;
 use app\models\exceptions\{FormError, MailNotSent, ResponseException};
-use app\models\forms\{AmendmentEditForm, ProposedChangeForm};
+use app\models\forms\{AdminMotionFilterForm, AmendmentEditForm, ProposedChangeForm};
 use app\models\notifications\AmendmentProposedProcedure;
 use app\models\sectionTypes\ISectionType;
 use app\views\amendment\LayoutHelper;
@@ -36,8 +37,10 @@ class AmendmentController extends Base
             return new HtmlErrorResponse(404, 'Amendment not found');
         }
 
+        $selectedPdfLayout = IPDFLayout::getPdfLayoutForMotionType($amendment->getMyMotionType());
+
         $hasLaTeX = ($this->getParams()->xelatexPath || $this->getParams()->lualatexPath);
-        if (!($hasLaTeX && $amendment->getMyMotionType()->texTemplateId) && !$amendment->getMyMotionType()->getPDFLayoutClass()) {
+        if (!($hasLaTeX && $selectedPdfLayout->latexId !== null) && $selectedPdfLayout->id === null) {
             return new HtmlErrorResponse(404, \Yii::t('motion', 'err_no_pdf'));
         }
 
@@ -45,7 +48,9 @@ class AmendmentController extends Base
             return new HtmlErrorResponse(404, \Yii::t('amend', 'err_not_visible'));
         }
 
-        if ($hasLaTeX && $amendment->getMyMotionType()->texTemplateId) {
+        if ($selectedPdfLayout->isHtmlToPdfLayout()) {
+            $pdf = LayoutHelper::createPdfFromHtml($amendment);
+        } elseif ($selectedPdfLayout->latexId !== null) {
             $pdf = LayoutHelper::createPdfLatex($amendment);
         } else {
             $pdf = LayoutHelper::createPdfTcpdf($amendment);
@@ -60,37 +65,46 @@ class AmendmentController extends Base
         );
     }
 
-    public function actionPdfcollection(int $withdrawn = 0): ResponseInterface
+    public function actionPdfcollection(int $inactive = 0): ResponseInterface
     {
-        $withdrawn = ($withdrawn === 1);
-        $motions   = $this->consultation->getVisibleIMotionsSorted($withdrawn);
-        if (count($motions) === 0) {
-            return new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet'));
+        $search = AdminMotionFilterForm::getForConsultationFromRequest($this->consultation, $this->consultation->motions, $this->getRequestValue('Search'));
+        $amendments = $search->getAmendmentsForExport($this->consultation, ($inactive === 1));
+
+        if (count($amendments) === 0) {
+            return new HtmlErrorResponse(404, \Yii::t('amend', 'none_yet'));
         }
-        $amendments  = [];
         $texTemplate = null;
-        foreach ($motions as $motion) {
-            if (!is_a($motion, Motion::class) || $motion->getMyMotionType()->amendmentsOnly) {
+        $toShowAmendments = [];
+        foreach ($amendments as $amendmentGroups) {
+            if ($amendmentGroups['motion']->getMyMotionType()->amendmentsOnly) {
                 continue;
             }
             // If we have multiple motion types, we just take the template from the first one.
             if ($texTemplate === null) {
-                $texTemplate = $motion->getMyMotionType()->texTemplate;
+                $texTemplate = $amendmentGroups['motion']->getMyMotionType()->texTemplate;
             }
-            $amendments = array_merge($amendments, $motion->getVisibleAmendmentsSorted($withdrawn));
+            $toShowAmendments = array_merge($toShowAmendments, $amendmentGroups['amendments']);
         }
-        if (count($amendments) == 0) {
+        if (count($toShowAmendments) === 0) {
             return new HtmlErrorResponse(404, \Yii::t('amend', 'none_yet'));
         }
 
+        $selectedPdfLayout = IPDFLayout::getPdfLayoutForMotionType($amendments[0]['motion']->getMyMotionType());
+
         $hasLaTeX = ($this->getParams()->xelatexPath || $this->getParams()->lualatexPath);
-        if ($hasLaTeX && $texTemplate) {
+        if (!($hasLaTeX && $selectedPdfLayout->latexId !== null) && $selectedPdfLayout->id === null) {
+            return new HtmlErrorResponse(404, \Yii::t('motion', 'err_no_pdf'));
+        }
+
+        if ($selectedPdfLayout->isHtmlToPdfLayout()) {
+            $pdf = $this->renderPartial('pdf_collection_html2pdf', ['amendments' => $toShowAmendments]);
+        } elseif ($selectedPdfLayout->latexId !== null) {
             $pdf = $this->renderPartial('pdf_collection_tex', [
-                'amendments'  => $amendments,
+                'amendments'  => $toShowAmendments,
                 'texTemplate' => $texTemplate,
             ]);
         } else {
-            $pdf = $this->renderPartial('pdf_collection_tcpdf', ['amendments' => $amendments]);
+            $pdf = $this->renderPartial('pdf_collection_tcpdf', ['amendments' => $toShowAmendments]);
         }
 
         return new BinaryFileResponse(
@@ -396,7 +410,7 @@ class AmendmentController extends Base
         }
 
         if (count($form->supporters) == 0) {
-            $form->supporters[] = AmendmentSupporter::createInitiator($supportType, $iAmAdmin);
+            $form->supporters[] = AmendmentSupporter::createInitiator($this->consultation, $supportType, $iAmAdmin);
         }
 
         return new HtmlResponse($this->render(
@@ -452,6 +466,8 @@ class AmendmentController extends Base
         $ppChanges = new ProposedProcedureChange(null);
 
         if ($this->getHttpRequest()->post('setStatus', null) !== null) {
+            $originalProposalStatus = $amendment->proposalStatus;
+
             foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
                 /** @var Amendment $amendment */
                 $amendment = $plugin::onBeforeProposedProcedureStatusSave($amendment);
@@ -508,6 +524,10 @@ class AmendmentController extends Base
                     true,
                     $ppChanges
                 );
+
+                if ($amendment->proposalStatus === IMotion::STATUS_MODIFIED_ACCEPTED && $originalProposalStatus !== $amendment->proposalStatus) {
+                    $response['redirectToUrl'] = UrlHelper::createAmendmentUrl($amendment, 'edit-proposed-change');
+                }
             } catch (FormError $e) {
                 $response['success'] = false;
                 $response['error'] = $e->getMessage();
@@ -630,14 +650,16 @@ class AmendmentController extends Base
 
         if ($this->getHttpRequest()->post('save', null) !== null) {
             $form->save($this->getHttpRequest()->post(), $_FILES);
-            $msgSuccess = \Yii::t('base', 'saved');
+            $this->getHttpSession()->setFlash('success', \Yii::t('base', 'saved'));
 
             if ($amendment->proposalUserStatus !== null) {
-                $msgAlert = \Yii::t('amend', 'proposal_user_change_reset');
+                $this->getHttpSession()->setFlash('info', \Yii::t('amend', 'proposal_user_change_reset'));
             }
             $amendment->proposalUserStatus = null;
             $amendment->save();
             $amendment->flushCacheItems(['procedure']);
+
+            return new RedirectResponse(UrlHelper::createAmendmentUrl($amendment, 'view'));
         }
 
         return new HtmlResponse($this->render('edit_proposed_change', [

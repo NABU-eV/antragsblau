@@ -8,6 +8,13 @@ class AntragsgruenApp implements \JsonSerializable
 {
     use JsonConfigTrait;
 
+    public const CAPTCHA_MODE_NEVER = 'never';
+    public const CAPTCHA_MODE_THROTTLE = 'throttle';
+    public const CAPTCHA_MODE_ALWAYS = 'always';
+
+    public const CAPTCHA_DIFFICULTY_EASY = 'easy';
+    public const CAPTCHA_DIFFICULTY_MEDIUM = 'medium';
+
     public ?array $dbConnection = null;
     public ?string $siteSubdomain = null;
     public ?array $redis = null;
@@ -23,10 +30,13 @@ class AntragsgruenApp implements \JsonSerializable
     public bool $hasSaml = false;
     public bool $prependWWWToSubdomain = true;
     public bool $allowRegistration = true;
+    public bool $allowAccountDeletion = true;
     public bool $confirmEmailAddresses = true;
+    public bool $enforceTwoFactorAuthentication = false;
     public bool $dataPrivacyCheckbox = false;
     public string $mailFromName = 'Antragsgrün';
     public string $mailFromEmail = '';
+    public ?string $mailDefaultReplyTo = null;
     /** @var int[] */
     public array $adminUserIds = [];
     /** @var string[] */
@@ -34,10 +44,10 @@ class AntragsgruenApp implements \JsonSerializable
     /** @var string[] */
     public array $blockedSubdomains = ['www', 'rest', 'ftp', 'smtp', 'imap'];
     public int $autoLoginDuration = 31536000; // 1 Year
-    public bool $loginCaptcha = false; // Forces captcha even at the first login attempt
     public ?string $xelatexPath = null; // @TODO OBSOLETE
     public ?string $xdvipdfmx = null; // @TODO OBSOLETE
     public ?string $lualatexPath = null;
+    public ?string $weasyprintPath = null;
     public bool $pdfExportConcat = true;
     public mixed $pdfExportIntegFrame = false; // Type: mixed, can be ether int or array
     public array $localMessages = [];
@@ -49,6 +59,13 @@ class AntragsgruenApp implements \JsonSerializable
     public ?string $updateKey = null;
     public ?string $jwtPrivateKey = null;
 
+    /** @var array{mode: string, ignoredIps: string[], difficulty: string} */
+    public array $captcha = [
+        'mode' => self::CAPTCHA_MODE_THROTTLE,
+        'ignoredIps' => [],
+        'difficulty' => self::CAPTCHA_DIFFICULTY_MEDIUM,
+    ];
+
     /** @var array<class-string<ModuleBase>> */
     protected array $plugins = [];
 
@@ -57,7 +74,7 @@ class AntragsgruenApp implements \JsonSerializable
 
     public array $mailService = ['transport' => 'sendmail'];
 
-    /** @var array{wsUri: string, stompJsUri: string, rabbitMqUri: string, rabbitMqExchangeName: string, rabbitMqUsername: string, rabbitMqPassword: string}|null */
+    /** @var array{installationId: string, wsUri: string, stompJsUri: string, rabbitMqUri: string, rabbitMqExchangeName: string, rabbitMqUsername: string, rabbitMqPassword: string}|null */
     public ?array $live = null;
 
     public static function getInstance(): AntragsgruenApp
@@ -87,6 +104,28 @@ class AntragsgruenApp implements \JsonSerializable
             $this->resourceBase = str_replace('index.php', '', $this->resourceBase);
             $this->domainPlain  = ($this->isHttps() ? 'https' : 'http');
             $this->domainPlain  .= '://' . $_SERVER['HTTP_HOST'] . '/';
+        }
+    }
+
+    public function setCaptcha(?array $captcha): void
+    {
+        if (!is_array($captcha)) {
+            return;
+        }
+        if (isset($captcha['mode'])) {
+            if (!in_array($captcha['mode'], [self::CAPTCHA_MODE_NEVER, self::CAPTCHA_MODE_THROTTLE, self::CAPTCHA_MODE_ALWAYS], true)) {
+                throw new \Exception('Invalid captcha mode setting');
+            }
+            $this->captcha['mode'] = $captcha['mode'];
+        }
+        if (isset($captcha['difficulty'])) {
+            if (!in_array($captcha['difficulty'], [self::CAPTCHA_DIFFICULTY_EASY, self::CAPTCHA_DIFFICULTY_MEDIUM], true)) {
+                throw new \Exception('Invalid captcha difficulty setting');
+            }
+            $this->captcha['difficulty'] = $captcha['difficulty'];
+        }
+        if (isset($captcha['ignoredIps']) && is_array($captcha['ignoredIps'])) {
+            $this->captcha['ignoredIps'] = $captcha['ignoredIps'];
         }
     }
 

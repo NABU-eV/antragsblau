@@ -1,17 +1,23 @@
-const gulp = require('gulp'),
-    terser = require('gulp-terser'),
-    concat = require('gulp-concat'),
-    sass = require('gulp-sass')(require('sass')),
-    ts = require('gulp-typescript'),
-    postcss = require('gulp-postcss'),
-    autoprefixer = require('autoprefixer'),
-    tsProject = ts.createProject('tsconfig.json'),
-    sourcemaps = require('gulp-sourcemaps'),
+'use strict';
+import autoprefixer from 'autoprefixer';
+import gulp from 'gulp';
+import concat from 'gulp-concat';
+import postcss from 'gulp-postcss';
+import sourcemaps from 'gulp-sourcemaps';
+import terser from 'gulp-terser';
+import ts from 'gulp-typescript';
+// SASS
+import * as dartSass from 'sass';
+import gulpSass from 'gulp-sass';
+const sass = gulpSass(dartSass);
 
-    main_js_files = [
-        "node_modules/bootstrap/dist/js/bootstrap.js", "node_modules/bootbox/bootbox.all.js", "web/js/scrollintoview.js", "web/js/jquery.isonscreen.js",
-        "node_modules/intl/dist/Intl.min.js"
-    ];
+const tsProject = ts.createProject('tsconfig.json');
+const main_js_files = [
+    "node_modules/bootstrap/dist/js/bootstrap.js",
+    "node_modules/bootbox/bootbox.all.js",
+    "web/js/scrollintoview.js",
+    "web/js/jquery.isonscreen.js",
+];
 
 async function taskCopyFiles() {
     await gulp.src("node_modules/@selectize/selectize/dist/js/selectize.min.js").pipe(gulp.dest('./web/npm/'));
@@ -92,6 +98,15 @@ function taskBuildJsCa() {
         .pipe(gulp.dest('./web/js/build/'));
 }
 
+function taskBuildJsMe() {
+    return gulp.src(["web/js/antragsgruen-me.js"])
+        .pipe(sourcemaps.init())
+        .pipe(concat('antragsgruen-me.min.js'))
+        .pipe(terser())
+        .pipe(sourcemaps.write('./'))
+        .pipe(gulp.dest('./web/js/build/'));
+}
+
 function taskBuildJsEn() {
     return gulp.src(["web/js/antragsgruen-en.js"])
         .pipe(sourcemaps.init())
@@ -110,12 +125,24 @@ function taskBuildJsEnGb() {
         .pipe(gulp.dest('./web/js/build/'));
 }
 
-const taskBuildJs = gulp.parallel(taskBuildJsMain, taskBuildJsDe, taskBuildJsFr, taskBuildJsNl, taskBuildJsCa, taskBuildJsEn, taskBuildJsEnGb, taskBuildDatetimepicker);
+const taskBuildJs = gulp.parallel(taskBuildJsMain, taskBuildJsDe, taskBuildJsFr, taskBuildJsNl, taskBuildJsCa, taskBuildJsMe, taskBuildJsEn, taskBuildJsEnGb, taskBuildDatetimepicker);
+
+/**
+ * Gulp-sass does not yet support new API.
+ * @see https://github.com/dlmanning/gulp-sass/pull/846
+ * @type {import('sass').LegacyOptions<sync>}
+ * // @type {import('sass').Options<sync>}
+ */
+const sassOptions = {
+    outputStyle: 'compressed',
+    includePaths: ['web/'],
+    silenceDeprecations: ['mixed-decls', 'legacy-js-api','color-functions'],
+};
 
 function taskBuildCss() {
     return gulp.src("web/css/*.scss")
         .pipe(sourcemaps.init())
-        .pipe(sass.sync({outputStyle: 'compressed'}).on('error', sass.logError))
+        .pipe(sass.sync(sassOptions).on('error', sass.logError))
         .pipe(postcss([autoprefixer()]))
         .pipe(sourcemaps.write('./'))
         .pipe(gulp.dest('web/css/'));
@@ -124,10 +151,19 @@ function taskBuildCss() {
 function taskBuildPluginCss() {
     return gulp.src("plugins/**/*.scss")
         .pipe(sourcemaps.init())
-        .pipe(sass.sync({outputStyle: 'compressed'}).on('error', sass.logError))
+        .pipe(sass.sync(sassOptions).on('error', sass.logError))
         .pipe(postcss([autoprefixer()]))
         .pipe(sourcemaps.write('./'))
         .pipe(gulp.dest('plugins/'));
+}
+
+function taskBuildHtml2PdfCss() {
+    return gulp.src("assets/html2pdf/*.scss")
+        .pipe(sourcemaps.init())
+        .pipe(sass.sync(sassOptions).on('error', sass.logError))
+        .pipe(postcss([autoprefixer()]))
+        .pipe(sourcemaps.write('./'))
+        .pipe(gulp.dest('assets/html2pdf/'));
 }
 
 function taskWatch() {
@@ -136,14 +172,16 @@ function taskWatch() {
     gulp.watch(["web/js/bootstrap-datetimepicker.js"], {usePolling: true}, taskBuildDatetimepicker);
     gulp.watch(["web/css/*.scss"], {usePolling: true}, gulp.parallel(taskBuildCss, taskBuildPluginCss));
     gulp.watch(["plugins/**/*.scss"], {usePolling: true}, taskBuildPluginCss);
+    gulp.watch(["assets/html2pdf/*.scss"], {usePolling: true}, taskBuildHtml2PdfCss);
     gulp.watch(['web/typescript/**/*.ts'], {usePolling: true}, taskBuildTypescript);
 }
 
 gulp.task('build-js', taskBuildJs);
 gulp.task('build-typescript', taskBuildTypescript);
 gulp.task('build-css', taskBuildCss);
+gulp.task('build-html2pdf-css', taskBuildHtml2PdfCss);
 gulp.task('build-plugin-css', taskBuildPluginCss);
 gulp.task('copy-files', taskCopyFiles);
 gulp.task('watch', taskWatch);
 
-gulp.task('default', gulp.parallel(taskBuildJs, taskBuildTypescript, taskBuildCss, taskCopyFiles, taskBuildPluginCss));
+gulp.task('default', gulp.parallel(taskBuildJs, taskBuildTypescript, taskBuildCss, taskCopyFiles, taskBuildPluginCss, taskBuildHtml2PdfCss));

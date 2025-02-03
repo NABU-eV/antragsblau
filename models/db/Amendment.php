@@ -19,7 +19,6 @@ use app\models\notifications\{AmendmentProposedProcedure,
     AmendmentPublished as AmendmentPublishedNotification,
     AmendmentSubmitted as AmendmentSubmittedNotification,
     AmendmentWithdrawn as AmendmentWithdrawnNotification};
-use app\models\policies\IPolicy;
 use app\models\sectionTypes\{Image, ISectionType, PDF, TextSimple};
 use app\models\supportTypes\SupportBase;
 use yii\db\ActiveQuery;
@@ -353,7 +352,6 @@ class Amendment extends IMotion implements IRSSItem
         if ($current && $current->isMyAmendment($this->id)) {
             return $current;
         } else {
-            /** @var Motion $motion */
             $motion = Motion::findOne($this->motionId);
             if (!$motion) {
                 return null;
@@ -433,39 +431,31 @@ class Amendment extends IMotion implements IRSSItem
      */
     public static function calcAffectedDiffLinesCached(array $sectionData, int $lineLength): array
     {
-        $cacheFunc = 'calcAffectedDiffLinesCached';
-        $cacheDeps = [$sectionData, $lineLength];
+        $cache = HashedStaticCache::getInstance('calcAffectedDiffLinesCached', [$sectionData, $lineLength]);
+        return $cache->getCached(function () use ($sectionData, $lineLength) {
+            $firstAffectedLine = null;
+            $lastAffectedLine = null;
 
-        $cache = HashedStaticCache::getCache($cacheFunc, $cacheDeps);
-        if ($cache !== false) {
-            return $cache;
-        }
+            foreach ($sectionData as $section) {
+                $formatter = new AmendmentSectionFormatter();
+                $formatter->setTextOriginal($section['original']);
+                $formatter->setTextNew($section['new']);
+                $formatter->setFirstLineNo($section['firstLine']);
+                $diffGroups = $formatter->getDiffGroupsWithNumbers($lineLength, DiffRenderer::FORMATTING_CLASSES, 0);
 
-        $firstAffectedLine = null;
-        $lastAffectedLine = null;
-
-        foreach ($sectionData as $section) {
-            $formatter = new AmendmentSectionFormatter();
-            $formatter->setTextOriginal($section['original']);
-            $formatter->setTextNew($section['new']);
-            $formatter->setFirstLineNo($section['firstLine']);
-            $diffGroups = $formatter->getDiffGroupsWithNumbers($lineLength, DiffRenderer::FORMATTING_CLASSES, 0);
-
-            foreach ($diffGroups as $diffGroup) {
-                if ($firstAffectedLine === null) {
-                    $firstAffectedLine = $diffGroup->lineFrom;
+                foreach ($diffGroups as $diffGroup) {
+                    if ($firstAffectedLine === null) {
+                        $firstAffectedLine = $diffGroup->lineFrom;
+                    }
+                    $lastAffectedLine = $diffGroup->lineTo;
                 }
-                $lastAffectedLine = $diffGroup->lineTo;
             }
-        }
 
-        $result = [
-            'from' => $firstAffectedLine ?? ($sectionData[0]['firstLine'] ?? 0),
-            'to' => $lastAffectedLine ?? ($sectionData[0]['firstLine'] ?? 0),
-        ];
-        HashedStaticCache::setCache($cacheFunc, $cacheDeps, $result);
-
-        return $result;
+            return [
+                'from' => $firstAffectedLine ?? ($sectionData[0]['firstLine'] ?? 0),
+                'to' => $lastAffectedLine ?? ($sectionData[0]['firstLine'] ?? 0),
+            ];
+        });
     }
 
     /**
@@ -680,7 +670,7 @@ class Amendment extends IMotion implements IRSSItem
 
     public function iAmInitiator(): bool
     {
-        $user = RequestContext::getUser();
+        $user = RequestContext::getYiiUser();
         if ($user->isGuest) {
             return false;
         }
@@ -728,6 +718,9 @@ class Amendment extends IMotion implements IRSSItem
                 // If it's activated explicitly, then supporting is allowed in every status, also after the deadline
                 return true;
             }
+            if ($this->hasEnoughSupporters($this->getMyMotionType()->getAmendmentSupportTypeClass()) && !$supportSettings->allowMoreSupporters) {
+                return false;
+            }
 
             if ($this->status !== IMotion::STATUS_COLLECTING_SUPPORTERS) {
                 return false;
@@ -757,16 +750,11 @@ class Amendment extends IMotion implements IRSSItem
         if ($this->getMyConsultation()->havePrivilege(Privileges::PRIVILEGE_CONTENT_EDIT, null)) {
             return true;
         } elseif ($this->getMyMotion()->iAmInitiator()) {
-            $policy = $this->getMyMotionType()->initiatorsCanMergeAmendments;
-            if ($policy == ConsultationMotionType::INITIATORS_MERGE_WITH_COLLISION) {
-                return true;
-            } elseif ($policy == ConsultationMotionType::INITIATORS_MERGE_NO_COLLISION && $ignoreCollisionProblems) {
-                return true;
-            } elseif ($policy == ConsultationMotionType::INITIATORS_MERGE_NO_COLLISION && !$ignoreCollisionProblems) {
-                return (count($this->getCollidingAmendments()) == 0);
-            } else {
-                return false;
-            }
+            return match ($this->getMyMotionType()->initiatorsCanMergeAmendments) {
+                ConsultationMotionType::INITIATORS_MERGE_WITH_COLLISION => true,
+                ConsultationMotionType::INITIATORS_MERGE_NO_COLLISION => $ignoreCollisionProblems || count($this->getCollidingAmendments()) === 0,
+                default => false,
+            };
         } else {
             return false;
         }
@@ -1080,7 +1068,13 @@ class Amendment extends IMotion implements IRSSItem
             $return[\Yii::t('motion', 'status')] = $consultation->getStatuses()->getStatusNames()[$this->status];
         }
 
-        return $return;
+        if ($this->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+            if ($this->isProposalPublic() && $this->proposalStatus) {
+                $return[\Yii::t('amend', 'proposed_status')] = strip_tags($this->getFormattedProposalStatus(true));
+            }
+        }
+
+        return Layout::getAmendmentExportData($return, $this);
     }
 
     public function getMyMotionType(): ConsultationMotionType
@@ -1089,21 +1083,20 @@ class Amendment extends IMotion implements IRSSItem
     }
 
     /**
+     * @param array<int|string, int> $sectionMapping
      * @throws FormError
      */
-    public function setMotionType(ConsultationMotionType $motionType): void
+    public function setMotionType(ConsultationMotionType $motionType, array $sectionMapping): void
     {
-        if (!$this->getMyMotionType()->isCompatibleTo($motionType)) {
-            throw new FormError('This amendment cannot be changed to the type ' . $motionType->titleSingular);
+        foreach ($this->sections as $section) {
+            if (!isset($sectionMapping[$section->sectionId])) {
+                throw new FormError('This amendment cannot be changed to the type ' . $motionType->titleSingular . ': no complete section mapping found');
+            }
         }
 
-        $typeMapping = $this->getMyMotionType()->getSectionCompatibilityMapping($motionType);
         $mySections  = $this->getSortedSections(false);
         for ($i = 0; $i < count($mySections); $i++) {
-            if (!isset($typeMapping[$mySections[$i]->sectionId])) {
-                continue;
-            }
-            $mySections[$i]->sectionId = $typeMapping[$mySections[$i]->sectionId];
+            $mySections[$i]->sectionId = $sectionMapping[$mySections[$i]->sectionId];
             if (!$mySections[$i]->save()) {
                 $err = print_r($mySections[$i]->getErrors(), true);
                 throw new FormError('Something terrible happened while changing the motion type: ' . $err);

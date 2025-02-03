@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\commands;
 
 use app\components\{UrlHelper, UserGroupAdminMethods};
@@ -14,10 +16,16 @@ class UserController extends Controller
     public ?string $password = null;
     public ?string $welcomeFile = null;
 
+    public bool $forcePasswordChange = false;
+    public bool $forceTwoFactor = false;
+    public bool $preventPasswordChange = false;
+    public bool $fixedName = false;
+    public bool $fixedOrganization = false;
+
     public function options($actionID): array
     {
         return match ($actionID) {
-            'create' => ['groupIds', 'organization', 'welcomeFile'],
+            'create', 'create-or-update' => ['groupIds', 'organization', 'welcomeFile', 'forcePasswordChange', 'forceTwoFactor', 'preventPasswordChange', 'fixedName', 'fixedOrganization'],
             'update' => ['groupIds', 'organization', 'password'],
             default => [],
         };
@@ -74,12 +82,45 @@ class UserController extends Controller
     }
 
     /**
+     * Creates a user or updates their data if already existing
+     *
+     * Example:
+     * ./yii user/create-or-update email:test@example.org test@example.org "Given Name" "Family Name" TestPassword --groupIds 1,2 --organization Antragsgrün --welcome-file welcome-email.txt
+     *
+     * "groupIds" refer to the primary IDs in "consultationUserGroup"
+     * Optional flags:
+     * --forcePasswordChange
+     * --forceTwoFactor
+     * --preventPasswordChange
+     * --fixedName
+     * --fixedOrganization
+     */
+    public function actionCreateOrUpdate(string $auth, string $email, string $givenName, string $familyName, string $password): int
+    {
+        /** @var User|null $user */
+        $user = $this->findUserByAuth($auth);
+        if ($user) {
+            $this->updateUser($user, $this->organization, $password);
+        } else {
+            $this->actionCreate($auth, $email, $givenName, $familyName, $password);
+        }
+
+        return 0;
+    }
+
+    /**
      * Creates a user
      *
      * Example:
      * ./yii user/create email:test@example.org test@example.org "Given Name" "Family Name" TestPassword --groupIds 1,2 --organization Antragsgrün --welcome-file welcome-email.txt
      *
      * "groupIds" refer to the primary IDs in "consultationUserGroup"
+     * Optional flags:
+     * --forcePasswordChange
+     * --forceTwoFactor
+     * --preventPasswordChange
+     * --fixedName
+     * --fixedOrganization
      */
     public function actionCreate(string $auth, string $email, string $givenName, string $familyName, string $password): int
     {
@@ -105,10 +146,31 @@ class UserController extends Controller
         $user->nameFamily = $familyName;
         $user->name = $givenName . ' ' . $familyName;
         $user->emailConfirmed = 1;
-        $user->pwdEnc = (string)password_hash($password, PASSWORD_DEFAULT);
+        $user->pwdEnc = password_hash($password, PASSWORD_DEFAULT);
         $user->status = User::STATUS_CONFIRMED;
         $user->organizationIds = '';
         $user->organization = $this->organization;
+
+        $user->fixedData = 0;
+        if ($this->fixedName) {
+            $user->fixedData |= User::FIXED_NAME;
+        }
+        if ($this->fixedOrganization) {
+            $user->fixedData |= User::FIXED_ORGA;
+        }
+
+        $userSettings = $user->getSettingsObj();
+        if ($this->forcePasswordChange) {
+            $userSettings->forcePasswordChange = true;
+        }
+        if ($this->preventPasswordChange) {
+            $userSettings->preventPasswordChange = true;
+        }
+        if ($this->forceTwoFactor) {
+            $userSettings->enforceTwoFactorAuthentication = true;
+        }
+        $user->setSettingsObj($userSettings);
+
         $user->save();
 
         foreach ($toUserGroups as $toUserGroup) {
@@ -146,22 +208,34 @@ class UserController extends Controller
             return 1;
         }
 
+        $this->updateUser($user, $this->organization, $this->password);
+
+        return 0;
+    }
+
+    public function updateUser(?User $user, ?string $organization, ?string $password): void
+    {
         $toUserGroups = $this->getToSetUserGroups();
 
-        if ($this->organization) {
-            $user->organization = $this->organization;
+        if ($organization !== null) {
+            $user->organization = $organization;
             $user->save();
         }
-        if ($this->password) {
-            $user->changePassword($this->password);
+        if ($password) {
+            $user->changePassword($password);
+        }
+
+        $existingGroups = [];
+        foreach ($user->userGroups as $userGroup) {
+            $existingGroups[] = $userGroup->id;
         }
 
         foreach ($toUserGroups as $toUserGroup) {
-            $user->link('userGroups', $toUserGroup);
+            if (!in_array($toUserGroup->id, $existingGroups)) {
+                $user->link('userGroups', $toUserGroup);
+            }
         }
 
-        $this->stdout('Updated the user');
-
-        return 0;
+        $this->stdout('Updated the user: ' . $user->auth);
     }
 }

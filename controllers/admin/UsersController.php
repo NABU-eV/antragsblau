@@ -57,7 +57,11 @@ class UsersController extends AdminBase
         $user = User::findByAuthTypeAndName($this->getPostValue('type'), $this->getPostValue('username'));
         if ($user) {
             $thisConRoles = $user->getConsultationUserGroupIds($this->consultation);
-            $response = ['exists' => true, 'already_member' => (count($thisConRoles) > 0)];
+            $response = [
+                'exists' => true,
+                'alreadyMember' => (count($thisConRoles) > 0),
+                'organization' => $user->organization,
+            ];
         } else {
             $response = ['exists' => false];
         }
@@ -109,6 +113,7 @@ class UsersController extends AdminBase
                 $this->getPostValue('authType'),
                 $this->getPostValue('authUsername'),
                 $password,
+                $this->isPostSet('forcePasswordChange'),
                 $this->getPostValue('nameGiven'),
                 $this->getPostValue('nameFamily'),
                 $this->getPostValue('organization'),
@@ -236,10 +241,6 @@ class UsersController extends AdminBase
         try {
             switch ($this->getHttpRequest()->post('op')) {
                 case 'save-user':
-                    $this->userGroupAdminMethods->setUserGroupsToUser(
-                        intval($this->getPostValue('userId')),
-                        array_map('intval', $this->getPostValue('groups', []))
-                    );
                     if (User::havePrivilege($consultation, Privileges::PRIVILEGE_GLOBAL_USER_ADMIN, null)) {
                         $this->userGroupAdminMethods->setUserData(
                             intval($this->getPostValue('userId')),
@@ -247,12 +248,32 @@ class UsersController extends AdminBase
                             $this->getPostValue('nameFamily', ''),
                             $this->getPostValue('organization', ''),
                             $this->getPostValue('ppReplyTo', ''),
-                            $this->getPostValue('newPassword')
+                            $this->getPostValue('newPassword'),
+                            $this->getPostValue('newAuth'),
+                            $this->getPostValue('remove2Fa'),
+                            $this->getPostValue('force2Fa'),
+                            $this->getPostValue('preventPasswordChange'),
+                            $this->getPostValue('forcePasswordChange')
                         );
                     }
+                    if ($this->getPostValue('voteWeight') !== null) {
+                        $this->userGroupAdminMethods->setUserVoteWeight(
+                            intval($this->getPostValue('userId')),
+                            intval($this->getPostValue('voteWeight'))
+                        );
+                    }
+                    $this->userGroupAdminMethods->setUserGroupsToUser(
+                        intval($this->getPostValue('userId')),
+                        array_map('intval', $this->getPostValue('groups', []))
+                    );
                     break;
                 case 'remove-user':
                     $this->userGroupAdminMethods->removeUser(intval($this->getPostValue('userId')));
+                    break;
+                case 'delete-user':
+                    if (User::havePrivilege($consultation, Privileges::PRIVILEGE_GLOBAL_USER_ADMIN, null)) {
+                        $this->userGroupAdminMethods->deleteUser(intval($this->getPostValue('userId')));
+                    }
                     break;
                 case 'create-user-group':
                     $this->userGroupAdminMethods->createUserGroup($this->getPostValue('groupName'));

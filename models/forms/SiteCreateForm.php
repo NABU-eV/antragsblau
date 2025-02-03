@@ -87,7 +87,7 @@ class SiteCreateForm extends Model
      * @param bool $safeOnly
      * @throws \app\models\exceptions\Internal
      */
-    public function setAttributes($values, $safeOnly = true)
+    public function setAttributes($values, $safeOnly = true): void
     {
         parent::setAttributes($values, $safeOnly);
 
@@ -654,8 +654,8 @@ class SiteCreateForm extends Model
 
     public function createSandboxUser(): User
     {
-        if (!RequestContext::getUser()->isGuest) {
-            RequestContext::getUser()->logout();
+        if (!RequestContext::getYiiUser()->isGuest) {
+            RequestContext::getYiiUser()->logout();
         }
 
         $email                 = $this->subdomain . '@example.org';
@@ -673,7 +673,7 @@ class SiteCreateForm extends Model
             die();
         }
 
-        RequestContext::getUser()->login($user, AntragsgruenApp::getInstance()->autoLoginDuration);
+        RequestContext::getYiiUser()->login($user, AntragsgruenApp::getInstance()->autoLoginDuration);
 
         return $user;
     }

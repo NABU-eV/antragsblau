@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\models\forms;
 
+use app\models\policies\{IPolicy, UserGroups};
 use app\models\db\{Consultation, ConsultationMotionType, ConsultationSettingsMotionSection, ConsultationSettingsTag, ConsultationText, ConsultationUserGroup, Site, User};
 use app\models\exceptions\FormError;
 
@@ -63,6 +64,12 @@ class ConsultationCreateForm
             throw new FormError(implode(', ', $consultation->getErrors()));
         }
 
+        if (in_array(self::SUBSELECTION_USERS, $this->templateSubselection)) {
+            $this->createConsultationFromTemplate_users($consultation);
+        } else {
+            $consultation->createDefaultUserGroups();
+        }
+
         if (in_array(self::SUBSELECTION_MOTION_TYPES, $this->templateSubselection)) {
             $this->createConsultationFromTemplate_motionTypes($consultation);
         }
@@ -75,16 +82,34 @@ class ConsultationCreateForm
             $this->createConsultationFromTemplate_tags($consultation);
         }
 
-        if (in_array(self::SUBSELECTION_USERS, $this->templateSubselection)) {
-            $this->createConsultationFromTemplate_users($consultation);
-        } else {
-            $consultation->createDefaultUserGroups();
-        }
+        $this->createConsultationFromTemplate_fixOrganisations($this->template, $consultation);
 
         if ($this->setAsDefault) {
             $this->site->currentConsultationId = $consultation->id;
             $this->site->save();
         }
+    }
+
+    private function createConsultationFromTemplate_policy(Consultation $newConsultation, IPolicy $policy): IPolicy
+    {
+        if (!is_a($policy, UserGroups::class)) {
+            return $policy;
+        }
+
+        $newGroupsByName = [];
+        foreach ($newConsultation->getAllAvailableUserGroups() as $group) {
+            $newGroupsByName[$group->title] = $group;
+        }
+
+        $newGroups = [];
+        foreach ($policy->getAllowedUserGroups() as $userGroup) {
+            if (isset($newGroupsByName[$userGroup->title])) {
+                $newGroups[] = $newGroupsByName[$userGroup->title];
+            }
+        }
+        $policy->setAllowedUserGroups($newGroups);
+
+        return $policy;
     }
 
     private function createConsultationFromTemplate_motionTypes(Consultation $newConsultation): void
@@ -93,7 +118,12 @@ class ConsultationCreateForm
             $newType = new ConsultationMotionType();
             $newType->setAttributes($motionType->getAttributes(), false);
             $newType->consultationId = $newConsultation->id;
-            $newType->id             = null;
+            $newType->id = null;
+            $newType->setMotionPolicy($this->createConsultationFromTemplate_policy($newConsultation, $motionType->getMotionPolicy()));
+            $newType->setAmendmentPolicy($this->createConsultationFromTemplate_policy($newConsultation, $motionType->getAmendmentPolicy()));
+            $newType->setMotionSupportPolicy($this->createConsultationFromTemplate_policy($newConsultation, $motionType->getMotionSupportPolicy()));
+            $newType->setAmendmentSupportPolicy($this->createConsultationFromTemplate_policy($newConsultation, $motionType->getAmendmentSupportPolicy()));
+
             if (!$newType->save()) {
                 throw new FormError($newType->getErrors());
             }
@@ -146,6 +176,38 @@ class ConsultationCreateForm
             $newTag->parentTagId = $newTagsByOldId[$tag->parentTagId]->id;
             $newTag->save();
         }
+    }
+
+    private function createConsultationFromTemplate_fixOrganisations(Consultation $oldConsultation, Consultation $newConsultation): void
+    {
+        $oldOrgas = $oldConsultation->getSettings()->organisations;
+        $newSettings = $newConsultation->getSettings();
+        $newOrgas = $newSettings->organisations;
+        if (!$oldOrgas || !$newOrgas) {
+            return;
+        }
+
+        $newConsultation->refresh();
+        $newOrgasByName = [];
+        foreach ($newConsultation->userGroups as $userGroup) {
+            $newOrgasByName[$userGroup->getNormalizedTitle()] = $userGroup->id;
+        }
+
+        $oldToNewMapping = [];
+        foreach ($oldConsultation->userGroups as $userGroup) {
+            if (isset($newOrgasByName[$userGroup->getNormalizedTitle()])) {
+                $oldToNewMapping[$userGroup->id] = $newOrgasByName[$userGroup->getNormalizedTitle()];
+            }
+        }
+
+        foreach ($newOrgas as $orga) {
+            $orga->autoUserGroups = array_filter(array_map(function ($oldOrgaId) use ($oldToNewMapping) {
+                return $oldToNewMapping[$oldOrgaId] ?? null;
+            }, $orga->autoUserGroups));
+        }
+        $newSettings->organisations = $newOrgas;
+        $newConsultation->setSettings($newSettings);
+        $newConsultation->save();
     }
 
     private function createConsultationFromTemplate_users(Consultation $newConsultation): void

@@ -69,6 +69,7 @@ rm -R vendor/symfony/http-client-contracts/Test
 rm -R vendor/symfony/service-contracts/Test
 rm -R vendor/scssphp/scssphp/bin
 rm -R vendor/cebe/markdown/bin
+rm -R vendor/predis/predis/docker
 rm -R vendor/yiisoft/yii2/i18n/migrations
 rm -R vendor/yiisoft/yii2/log/migrations
 rm -R vendor/bower-asset
@@ -80,15 +81,14 @@ rm ./vendor/s1syphos/php-simple-captcha/fonts/LinLibertine_Rah.ttf
 rm ./vendor/s1syphos/php-simple-captcha/fonts/Hack-Regular.ttf
 rm ./vendor/s1syphos/php-simple-captcha/fonts/Bitter-Bold.ttf
 rm ./vendor/s1syphos/php-simple-captcha/fonts/Vollkorn-Regular.ttf
+rm -R vendor/endroid/qr-code/assets/ # Replaced by bundled TTF
 find vendor -type l -exec rm {} \;
 rm -R vendor/cebe/markdown/tests
 rm -R tests/
-rm migrations/m15*
-rm migrations/m16*
-rm migrations/m17*
-rm migrations/m18*
-rm migrations/m19*
+rm migrations/m1*
 rm migrations/m20*
+rm migrations/m21*
+rm migrations/m22*
 find . -name ".DS_Store" -exec rm {} \;
 find . -name ".git" -exec rm -rf {} \;
 find . -name ".github" -exec rm -rf {} \;
@@ -100,13 +100,23 @@ find . -name ".woodpecker.yml" -exec rm {} \;
 find . -name ".travis" -exec rm {} \;
 find . -name ".travis.yml" -exec rm {} \;
 find . -name ".scrutinizer.yml" -exec rm {} \;
+find . -name ".php-cs-fixer.dist.php" -exec rm {} \;
+find . -name "phpunit9.xml.dist" -exec rm {} \;
 find . -name ".php_cs.dist" -exec rm {} \;
 find . -name ".phpstorm.meta.php" -exec rm {} \;
 find . -name "phpunit.xml" -exec rm {} \;
 find . -name ".eslintrc.js" -exec rm {} \;
+find . -name "phpstan-baseline.neon" -exec rm {} \;
+find . -name "phpstan.neon.dist" -exec rm {} \;
+find . -name ".readthedocs.yaml" -exec rm {} \;
 find . -name ".phpstan.neon.dist" -exec rm {} \;
 find . -name ".phpcs.xml.dist" -exec rm {} \;
 find . -name ".phpcs.xml" -exec rm {} \;
+find . -name "CONTRIBUTING.md" -exec rm {} \;
+find . -name "CHANGELOG.TXT" -exec rm {} \;
+find . -name "composer.json" -exec rm {} \;
+find . -name "Makefile" -exec rm {} \;
+find . -name "UPGRADE.md" -exec rm {} \;
 rm runtime/logs/app.log
 rm ./vendor/bin/json5
 rm vendor/colinodell/json5/bin/json5
@@ -119,6 +129,9 @@ cp config/.htaccess vendor/
 sed -i -e 's/repository\-source/dist/g' config/defines.php
 rm config/defines.php-e
 rm phpstan.use-baseline.neon
+rm eslint.config.mjs
+rm .eslintrc.cjs
+rm .eslintrc.js
 
 cd ..
 tar cfj ../dist/antragsgruen-$ANTRAGSGRUEN_VERSION.tar.bz2 antragsgruen-$ANTRAGSGRUEN_VERSION

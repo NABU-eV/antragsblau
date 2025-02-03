@@ -41,18 +41,37 @@
 }
 
 .contentSettingsToolbar {
-  padding: 0;
-  .textfield {
-    padding-top: 10px;
-  }
   input[type=text] {
     max-width: 160px;
+    display: inline-block;
   }
   .options {
     padding-top: 5px;
     label {
       font-weight: normal;
     }
+  }
+}
+.policyToolbarBelowTitle {
+  border-bottom: solid 1px #aaa;
+  padding: 7px 19px;
+  background: #f7f7f7;
+  display: flex;
+  flex-direction: row;
+  > .title {
+    flex-basis: 15%;
+    padding-top: 7px;
+  }
+  > .policySelectHolder {
+    flex-basis: 35%;
+    width: auto;
+    padding-right: 10px;
+    .stdDropdown {
+      padding-bottom: 10px;
+    }
+  }
+  #policyReadPageGroups {
+    flex-basis: 50%;
   }
 }
 

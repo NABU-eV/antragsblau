@@ -1,4 +1,4 @@
-<?php
+    <?php
 
 use app\components\{HTMLTools, UrlHelper};
 use app\models\db\Motion;
@@ -6,6 +6,7 @@ use app\models\settings\Layout;
 use yii\helpers\Html;
 
 /**
+ * @var bool $reducedNavigation
  * @var Motion $motion
  * @var bool $adminEdit
  * @var Layout $layout
@@ -22,6 +23,7 @@ foreach ($motion->replacedByMotions as $replMotion) {
 
 $html        = '<ul class="sidebarActions" aria-label="' . Html::encode(Yii::t('motion', 'sidebar_title_aria')) . '">';
 $sidebarRows = 0;
+$menusHtmlSmall = [];
 
 try {
     $motion->isCurrentlyAmendable(true, true, true);
@@ -46,19 +48,19 @@ try {
         $createLi .= Html::encode($e->getMessage()) . '</span></span></li>';
 
         $html .= $createLi;
-        $layout->menusHtmlSmall[] = $createLi;
+        $menusHtmlSmall[] = $createLi;
 
         $sidebarRows++;
     }
 }
 
-if ($motion->motionType->getPDFLayoutClass() !== null && $motion->isVisible()) {
+if ($motion->getMyMotionType()->hasPdfLayout() && $motion->isVisible()) {
     $pdfLi = '<li class="download">';
     $title = '<span class="icon glyphicon glyphicon-download-alt" aria-hidden="true"></span>' .
         Yii::t('motion', 'pdf_version');
     $pdfLi .= HtmlTools::createExternalLink($title, UrlHelper::createMotionUrl($motion, 'pdf')) . '</li>';
     $html .= $pdfLi;
-    $layout->menusHtmlSmall[] = $pdfLi;
+    $menusHtmlSmall[] = $pdfLi;
     $sidebarRows++;
 }
 
@@ -69,7 +71,7 @@ if ($motion->canMergeAmendments()) {
         Yii::t('motion', $title);
     $mergeLi .= Html::a($title, UrlHelper::createMotionUrl($motion, 'merge-amendments-init')) . '</li>';
     $html .= $mergeLi;
-    $layout->menusHtmlSmall[] = $mergeLi;
+    $menusHtmlSmall[] = $mergeLi;
     $sidebarRows++;
 }
 
@@ -79,7 +81,7 @@ if ($motion->canEditText()) {
         str_replace('%TYPE%', Html::encode($motion->motionType->titleSingular), Yii::t('motion', 'motion_edit'));
     $editLi .= Html::a($title, UrlHelper::createMotionUrl($motion, 'edit')) . '</li>';
     $html .= $editLi;
-    $layout->menusHtmlSmall[] = $editLi;
+    $menusHtmlSmall[] = $editLi;
     $sidebarRows++;
 }
 
@@ -89,7 +91,7 @@ if ($motion->canWithdraw()) {
         str_replace('%TYPE%', Html::encode($motion->motionType->titleSingular), Yii::t('motion', 'motion_withdraw'));
     $withdrawLi .= Html::a($title, UrlHelper::createMotionUrl($motion, 'withdraw')) . '</li>';
     $html .= $withdrawLi;
-    $layout->menusHtmlSmall[] = $withdrawLi;
+    $menusHtmlSmall[] = $withdrawLi;
     $sidebarRows++;
 }
 
@@ -98,14 +100,14 @@ if ($adminEdit) {
     $title   = '<span class="icon glyphicon glyphicon-wrench" aria-hidden="true"></span>' . Yii::t('motion', 'motion_admin_edit');
     $adminLi .= Html::a($title, $adminEdit) . '</li>';
     $html .= $adminLi;
-    $layout->menusHtmlSmall[] = $adminLi;
+    $menusHtmlSmall[] = $adminLi;
     $sidebarRows++;
 }
 
-if (!$motion->getMyConsultation()->getForcedMotion()) {
+if (!$motion->getMyConsultation()->getForcedMotion() && !$reducedNavigation) {
     $html .= '<li class="back">';
     $title = '<span class="icon glyphicon glyphicon-chevron-left" aria-hidden="true"></span>' . Yii::t('motion', 'back_start');
-    $html .= Html::a($title, UrlHelper::homeUrl()) . '</li>';
+    $html .= Html::a($title, \app\views\motion\LayoutHelper::getMotionBackLink($motion)) . '</li>';
     $sidebarRows++;
 }
 
@@ -114,6 +116,7 @@ $html .= '</ul>';
 
 if ($sidebarRows > 0) {
     $layout->menusHtml[] = $html;
+    $layout->menusHtmlSmall[] = '<ul>' . implode("\n", $menusHtmlSmall) . '</ul>';
     $layout->menuSidebarType = Layout::SIDEBAR_TYPE_MOTION;
 }
 

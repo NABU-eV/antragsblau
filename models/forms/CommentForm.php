@@ -100,7 +100,7 @@ class CommentForm
      */
     private function checkWritePermissions(): void
     {
-        if (RequestContext::getUser()->isGuest) {
+        if (RequestContext::getYiiUser()->isGuest) {
             $jsToken = AntiSpam::createToken((string)$this->motionType->consultationId);
             if ($jsToken !== RequestContext::getWebRequest()->post('jsprotection')) {
                 throw new Access(\Yii::t('base', 'err_js_or_login'));
@@ -229,7 +229,7 @@ class CommentForm
         }
 
         if ($this->motionType->getCommentPolicy()->checkCurrUserComment(false, false)) {
-            return \Yii::$app->controller->renderPartial('@app/views/motion/_comment_form', [
+            return \Yii::$app->controller->renderPartial('@app/views/shared/_comment_form', [
                 'form'         => $this,
                 'consultation' => $this->motionType->getConsultation(),
                 'paragraphNo'  => $this->paragraphNo,

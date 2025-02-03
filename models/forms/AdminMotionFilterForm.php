@@ -6,7 +6,9 @@ namespace app\models\forms;
 
 use app\models\AdminTodoItem;
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
-use app\components\{Tools, UrlHelper};
+use app\models\exceptions\{ExceptionBase, ResponseException};
+use app\models\http\HtmlErrorResponse;
+use app\components\{IMotionStatusFilter, RequestContext, Tools, UrlHelper};
 use app\models\db\{Amendment, AmendmentSupporter, Consultation, ConsultationSettingsTag, IMotion, ISupporter, Motion, MotionSupporter, User};
 use yii\helpers\Html;
 
@@ -23,6 +25,7 @@ class AdminMotionFilterForm
     public const SORT_RESPONSIBILITY = 9;
     public const SORT_DATE = 10;
 
+    public ?int $motionType = null;
     public ?int $status = null;
     public ?string $version = null;
     public ?int $tag = null;
@@ -46,6 +49,38 @@ class AdminMotionFilterForm
 
     /** @var string[] */
     protected array $route;
+
+    /**
+     * @return class-string<AdminMotionFilterForm>
+     */
+    public static function getClassToUse(): string
+    {
+        foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
+            if ($plugin::getFullMotionListClassOverride()) {
+                return $plugin::getFullMotionListClassOverride();
+            }
+        }
+        return AdminMotionFilterForm::class;
+    }
+
+    /**
+     * @param Motion[] $motions
+     */
+    public static function getForConsultationFromRequest(Consultation $consultation, array $motions, ?array $searchParams): AdminMotionFilterForm
+    {
+        $motionListClass = AdminMotionFilterForm::getClassToUse();
+        $privilegeScreening = User::havePrivilege($consultation, Privileges::PRIVILEGE_SCREENING, PrivilegeQueryContext::anyRestriction());
+
+        $search = new $motionListClass($consultation, $motions, $privilegeScreening);
+        if ($searchParams) {
+            RequestContext::getSession()->set('motionListSearch' . $consultation->id, $searchParams);
+            $search->setAttributes($searchParams);
+        } elseif (RequestContext::getSession()->get('motionListSearch' . $consultation->id)) {
+            $search->setAttributes(RequestContext::getSession()->get('motionListSearch' . $consultation->id));
+        }
+
+        return $search;
+    }
 
     /**
      * @param Motion[] $allMotions
@@ -78,26 +113,28 @@ class AdminMotionFilterForm
         }
     }
 
+    private function getNullableIntVal(array $values, string $key): ?int
+    {
+        if (isset($values[$key])) {
+            return ($values[$key] === '' ? null : intval($values[$key]));
+        } else {
+            return null;
+        }
+    }
+
     public function setAttributes(array $values): void
     {
+        $this->motionType = $this->getNullableIntVal($values, 'motionType');
         $this->title = $values['title'] ?? null;
         $this->initiator = $values['initiator'] ?? null;
         $this->prefix = $values['prefix'] ?? null;
-        if (isset($values['status'])) {
-            $this->status = ($values['status'] === '' ? null : intval($values['status']));
-        }
+        $this->status = $this->getNullableIntVal($values, 'status');
         if (isset($values['version'])) {
             $this->version = ($values['version'] === '' ? null : $values['version']);
         }
-        if (isset($values['tag'])) {
-            $this->tag = ($values['tag'] === '' ? null : intval($values['tag']));
-        }
-        if (isset($values['responsibility'])) {
-            $this->responsibility = ($values['responsibility'] === '' ? null : intval($values['responsibility']));
-        }
-        if (isset($values['agendaItem'])) {
-            $this->agendaItem = ($values['agendaItem'] === '' ? null : intval($values['agendaItem']));
-        }
+        $this->tag = $this->getNullableIntVal($values, 'tag');
+        $this->responsibility = $this->getNullableIntVal($values, 'responsibility');
+        $this->agendaItem = $this->getNullableIntVal($values, 'agendaItem');
 
         if (isset($values['proposalStatus']) && $values['proposalStatus'] != '') {
             $this->proposalStatus = $values['proposalStatus'];
@@ -116,6 +153,7 @@ class AdminMotionFilterForm
     public function getAttributes(): array
     {
         return [
+            'motionType' => $this->motionType,
             'title' => $this->title,
             'initiator' => $this->initiator,
             'prefix' => $this->prefix,
@@ -133,7 +171,8 @@ class AdminMotionFilterForm
 
     public function isFilterSet(): bool
     {
-        return $this->title !== null ||
+        return $this->motionType !== null ||
+               $this->title !== null ||
                $this->initiator !== null ||
                $this->prefix !== null ||
                $this->status !== null ||
@@ -157,13 +196,18 @@ class AdminMotionFilterForm
         $this->route = $route;
     }
 
-    public function getCurrentUrl(array $add = []): string
+    public function getSearchUrlParams(): array
     {
         $attributes = [];
         foreach ($this->getAttributes() as $key => $val) {
             $attributes['Search[' . $key . ']'] = $val;
         }
-        return UrlHelper::createUrl(array_merge($this->route, $attributes, $add));
+        return $attributes;
+    }
+
+    public function getCurrentUrl(array $add = []): string
+    {
+        return UrlHelper::createUrl(array_merge($this->route, $this->getSearchUrlParams(), $add));
     }
 
     private ?array $versionNames = null;
@@ -533,7 +577,7 @@ class AdminMotionFilterForm
     {
         $todoMotionIds = [];
         $todoAmendmentIds = [];
-        foreach (AdminTodoItem::getConsultationTodos($this->consultation) as $item) {
+        foreach (AdminTodoItem::getConsultationTodos($this->consultation, true) as $item) {
             if ($item->targetType === AdminTodoItem::TARGET_MOTION) {
                 $todoMotionIds[] = $item->targetId;
             }
@@ -569,7 +613,11 @@ class AdminMotionFilterForm
         foreach ($this->allMotions as $motion) {
             $matches = true;
 
-            if ($this->status !== null && $this->status !== '' && $motion->status !== $this->status) {
+            if ($this->motionType !== null && $motion->motionTypeId !== $this->motionType) {
+                $matches = false;
+            }
+
+            if ($this->status !== null && $motion->status !== $this->status) {
                 $matches = false;
             }
 
@@ -704,7 +752,11 @@ class AdminMotionFilterForm
                 $matches = false;
             }
 
-            if ($this->status !== null && $this->status !== "" && $amend->status !== $this->status) {
+            if ($this->motionType !== null && $amend->getMyMotion()->motionTypeId !== $this->motionType) {
+                $matches = false;
+            }
+
+            if ($this->status !== null && $amend->status !== $this->status) {
                 $matches = false;
             }
 
@@ -795,6 +847,19 @@ class AdminMotionFilterForm
                 $versions[$versionId] = $versionName;
             }
             $str .= Html::dropDownList('Search[version]', (string)$this->version, $versions, ['class' => 'stdDropdown']);
+            $str .= '</label>';
+        }
+
+        // Motion Type
+
+        $motionTypeList = $this->getMotionTypeList();
+        if (count($motionTypeList) > 1 || $this->motionType !== null) {
+            $str .= '<label class="filterMotionType">' . \Yii::t('admin', 'filter_motiontype') . ':<br>';
+            $types = ['' => \Yii::t('admin', 'filter_na')];
+            foreach ($motionTypeList as $typeId => $typeName) {
+                $types[$typeId] = $typeName;
+            }
+            $str .= Html::dropDownList('Search[motionType]', (string)$this->motionType, $types, ['class' => 'stdDropdown']);
             $str .= '</label>';
         }
 
@@ -903,7 +968,7 @@ class AdminMotionFilterForm
             <input id="initiatorSelect" class="typeahead form-control" type="text"
                 placeholder="' . \Yii::t('admin', 'filter_initiator_name') . '"
                 name="Search[initiator]" value="' . Html::encode($this->initiator ?: '') . '"
-                data-values="' . Html::encode(json_encode($values)) . '"></div>';
+                data-values="' . Html::encode(json_encode($values, JSON_THROW_ON_ERROR)) . '"></div>';
         $str .= '</div>';
 
 
@@ -1042,7 +1107,7 @@ class AdminMotionFilterForm
         return self::resolveTagList($tagStruct, '');
     }
 
-    public function getAgendaItemList($skipNumbers = false): array
+    public function getAgendaItemList(bool $skipNumbers = false): array
     {
         $agendaItems = [];
         foreach ($this->consultation->agendaItems as $agendaItem) {
@@ -1131,6 +1196,39 @@ class AdminMotionFilterForm
         return $out;
     }
 
+    private function getMotionTypeList(): array
+    {
+        $types = [];
+        $numMotions = [];
+        $numAmendments = [];
+        foreach ($this->allMotions as $motion) {
+            if (!isset($numMotions[$motion->motionTypeId])) {
+                $numMotions[$motion->motionTypeId] = 1;
+            } else {
+                $numMotions[$motion->motionTypeId]++;
+            }
+            foreach ($this->allAmendments as $amendment) {
+                if ($amendment->motionId === $motion->id) {
+                    if (!isset($numAmendments[$motion->motionTypeId])) {
+                        $numAmendments[$motion->motionTypeId] = 1;
+                    } else {
+                        $numAmendments[$motion->motionTypeId]++;
+                    }
+                }
+            }
+        }
+        foreach ($this->allMotions as $motion) {
+            if (!isset($types[$motion->motionTypeId])) {
+                $nums = $numMotions[$motion->motionTypeId];
+                if (isset($numAmendments[$motion->motionTypeId])) {
+                    $nums .= ' / ' . $numAmendments[$motion->motionTypeId];
+                }
+                $types[$motion->motionTypeId] = $motion->getMyMotionType()->titleSingular . ' (' . $nums . ')';
+            }
+        }
+        return $types;
+    }
+
     public function getVersionList(): array
     {
         $versions = [];
@@ -1158,9 +1256,9 @@ class AdminMotionFilterForm
         return false;
     }
 
-    protected function showAdditionalActions(): string
+    protected function showAdditionalActions(string $pre): string
     {
-        return '';
+        return $pre;
     }
 
     public static function performAdditionalListActions(Consultation $consultation): void
@@ -1184,22 +1282,114 @@ class AdminMotionFilterForm
         </div>
 
         <div class="actionButtons">' . \Yii::t('admin', 'list_marked') . ': &nbsp;';
+        $actions = '';
             if ($privilegeDelete) {
-                $str .= '<button type="submit" class="btn btn-danger deleteMarkedBtn" name="delete">' . \Yii::t('admin', 'list_delete') . '</button> &nbsp;';
+                $actions .= '<button type="submit" class="btn btn-danger deleteMarkedBtn" name="delete">' . \Yii::t('admin', 'list_delete') . '</button> &nbsp;';
             }
             if ($privilegeScreening) {
-                $str .= '<button type="submit" class="btn btn-info unscreenMarkedBtn" name="unscreen">' . \Yii::t('admin', 'list_unscreen') . '</button> &nbsp;';
-                $str .= '<button type="submit" class="btn btn-success screenMarkedBtn" name="screen">' . \Yii::t('admin', 'list_screen') . '</button> &nbsp;';
+                $actions .= '<button type="submit" class="btn btn-info unscreenMarkedBtn" name="unscreen">' . \Yii::t('admin', 'list_unscreen') . '</button> &nbsp;';
+                $actions .= '<button type="submit" class="btn btn-success screenMarkedBtn" name="screen">' . \Yii::t('admin', 'list_screen') . '</button> &nbsp;';
             }
             if ($privilegeProposals) {
-                $str .= '<button type="submit" class="btn btn-success" name="proposalVisible">' . \Yii::t('admin', 'list_proposal_visible') . '</button>';
+                $actions .= '<button type="submit" class="btn btn-success" name="proposalVisible">' . \Yii::t('admin', 'list_proposal_visible') . '</button>';
             }
             if ($this->hasAdditionalActions()) {
-                $str .= $this->showAdditionalActions();
+                $actions .= $this->showAdditionalActions($str);
             }
+            $str .= $actions;
             $str .= '</div>
         </section>';
 
         return $str;
+    }
+
+    /**
+     * Returns motions and statute amendments
+     * If a filter is set via the motion filter, then this will return exactly what the motion list will show (only filtered by type).
+     * Otherwise, the inactive-flag will be considered.
+     *
+     * @return IMotion[]
+     */
+    public function getMotionsForExport(Consultation $consultation, ?int $motionTypeId, bool $inactive): array
+    {
+        if ($motionTypeId) {
+            try {
+                $consultation->getMotionType($motionTypeId);
+            } catch (ExceptionBase $e) {
+                throw new ResponseException(new HtmlErrorResponse(404, $e->getMessage()));
+            }
+        }
+
+        if ($this->isDefaultSettings()) {
+            if ($motionTypeId > 0) {
+                $this->motionType = $motionTypeId;
+            }
+
+            $imotions = $this->getSorted();
+            $filter = IMotionStatusFilter::adminExport($consultation, $inactive);
+            $allIMotions = $filter->filterIMotions($imotions);
+        } else {
+            if ($motionTypeId > 0) {
+                $this->motionType = $motionTypeId;
+            }
+
+            $allIMotions = $this->getSorted();
+        }
+
+        try {
+            if (count($allIMotions) === 0) {
+                throw new ResponseException(new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet')));
+            }
+            /** @var IMotion[] $imotions */
+            $imotions = [];
+            foreach ($allIMotions as $imotion) {
+                if ($imotion->getMyMotionType()->amendmentsOnly && is_a($imotion, Amendment::class)) {
+                    $imotions[] = $imotion;
+                }
+                if (!$imotion->getMyMotionType()->amendmentsOnly && is_a($imotion, Motion::class)) {
+                    $imotions[] = $imotion;
+                }
+            }
+        } catch (ExceptionBase $e) {
+            throw new ResponseException(new HtmlErrorResponse(404, $e->getMessage()));
+        }
+
+        return $imotions;
+    }
+
+    /**
+     * Returns amendments
+     * If a filter is set via the motion filter, then this will return exactly what the motion list will show (only filtered by type).
+     * Otherwise, the inactive-flag will be considered.
+     *
+     * @return array<array{motion: Motion, amendments: Amendment[]}>
+     */
+    public function getAmendmentsForExport(Consultation $consultation, bool $inactive): array
+    {
+        if ($this->isDefaultSettings()) {
+            $imotions = $this->getSorted();
+            $filter = IMotionStatusFilter::adminExport($consultation, $inactive);
+
+            $amendments = $filter->filterAmendments($imotions);
+        } else {
+            $allIMotions = $this->getSorted();
+            $amendments = array_filter($allIMotions, fn(IMotion $IMotion) => is_a($IMotion, Amendment::class));
+        }
+
+        $filtered = [];
+        foreach ($amendments as $amendment) {
+            if (!$amendment->getMyMotion()) {
+                continue;
+            }
+            if (!isset($filtered[$amendment->motionId])) {
+                $filtered[$amendment->motionId] = [
+                    'motion' => $amendment->getMyMotion(),
+                    'amendments' => [],
+                ];
+            }
+            $filtered[$amendment->motionId]['amendments'][] = $amendment;
+        }
+
+        return array_values($filtered);
     }
 }

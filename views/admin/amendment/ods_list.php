@@ -1,15 +1,14 @@
 <?php
 
+use app\models\sectionTypes\TextSimpleCommon;
 use app\components\HTMLTools;
-use app\models\db\{AmendmentSection, Motion};
-use app\models\sectionTypes\TextSimple;
+use app\models\db\{Amendment, AmendmentSection, Motion};
 use CatoTH\HTML2OpenDocument\Spreadsheet;
 use yii\helpers\Html;
 
 /**
- * @var $this yii\web\View
- * @var Motion[] $motions
- * @var bool $withdrawn
+ * @var yii\web\View $this
+ * @var array<array{motion: Motion, amendments: Amendment[]}> $amendments
  */
 
 /** @var \app\controllers\Base $controller */
@@ -30,14 +29,14 @@ $currCol = $firstCol = 1;
 
 $hasAgendaItems = false;
 $hasResponsibilities = false;
-foreach ($motions as $motion) {
-    if ($motion->getMyMotionType()->amendmentsOnly) {
+foreach ($amendments as $amendmentGroup) {
+    if ($amendmentGroup['motion']->getMyMotionType()->amendmentsOnly) {
         continue;
     }
-    if ($motion->agendaItem) {
+    if ($amendmentGroup['motion']->agendaItem) {
         $hasAgendaItems = true;
     }
-    if ($motion->responsibilityId || $motion->responsibilityComment) {
+    if ($amendmentGroup['motion']->responsibilityId || $amendmentGroup['motion']->responsibilityComment) {
         $hasResponsibilities = true;
     }
 }
@@ -113,7 +112,8 @@ $doc->drawBorder(1, $firstCol, 2, $LAST_COL, 1.5);
 
 $row = 3;
 
-foreach ($motions as $motion) {
+foreach ($amendments as $amendmentGroup) {
+    $motion = $amendmentGroup['motion'];
     if ($motion->getMyMotionType()->amendmentsOnly) {
         continue;
     }
@@ -148,8 +148,7 @@ foreach ($motions as $motion) {
         $doc->setCell($row, $COL_RESPONSIBILITY, Spreadsheet::TYPE_TEXT, implode(', ', $responsibility));
     }
 
-    $amendments = $motion->getVisibleAmendmentsSorted($withdrawn);
-    foreach ($amendments as $amendment) {
+    foreach ($amendmentGroup['amendments'] as $amendment) {
         $row++;
 
         $initiatorNames   = [];
@@ -197,7 +196,7 @@ foreach ($motions as $motion) {
                 $lineLength   = $section->getCachedConsultation()->getSettings()->lineLength;
                 $originalData = $section->getOriginalMotionSection()->getData();
                 $newData      = $section->getData();
-                $proposal     .= TextSimple::formatAmendmentForOds($originalData, $newData, $firstLine, $lineLength);
+                $proposal     .= TextSimpleCommon::formatAmendmentForOds($originalData, $newData, $firstLine, $lineLength);
             }
         }
         $doc->setCell($row, $COL_PROCEDURE, Spreadsheet::TYPE_HTML, $proposal);

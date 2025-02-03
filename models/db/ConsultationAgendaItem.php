@@ -3,7 +3,8 @@
 namespace app\models\db;
 
 use app\models\settings\{AgendaItem, AntragsgruenApp};
-use app\components\{MotionSorter, Tools, UrlHelper};
+use app\components\{IMotionStatusFilter, Tools, UrlHelper};
+use app\views\consultation\LayoutHelper;
 use yii\db\{ActiveQuery, ActiveRecord};
 
 /**
@@ -20,7 +21,7 @@ use yii\db\{ActiveQuery, ActiveRecord};
  * @property Consultation $consultation
  * @property ConsultationAgendaItem|null $parentItem
  * @property ConsultationAgendaItem[] $childItems
- * @property ConsultationMotionType $motionType
+ * @property ConsultationMotionType|null $motionType
  * @property Motion[] $motions
  * @property SpeechQueue[] $speechQueues
  */
@@ -31,6 +32,13 @@ class ConsultationAgendaItem extends ActiveRecord
     public static function tableName(): string
     {
         return AntragsgruenApp::getInstance()->tablePrefix . 'consultationAgendaItem';
+    }
+
+    public function save($runValidation = true, $attributeNames = null): bool
+    {
+        $ret = parent::save($runValidation, $attributeNames);
+        LayoutHelper::flushViewCaches($this->getMyConsultation());
+        return $ret;
     }
 
     public function getConsultation(): ActiveQuery
@@ -94,7 +102,7 @@ class ConsultationAgendaItem extends ActiveRecord
     /**
      * @return Motion[]
      */
-    public function getMyMotions(): array
+    public function getMyMotions(?IMotionStatusFilter $filter = null): array
     {
         $motions = [];
         foreach ($this->getMyConsultation()->motions as $motion) {
@@ -103,13 +111,17 @@ class ConsultationAgendaItem extends ActiveRecord
             }
         }
 
+        if ($filter) {
+            $motions = $filter->filterMotions($motions);
+        }
+
         return $motions;
     }
 
     /**
      * @return IMotion[]
      */
-    public function getMyIMotions(): array
+    public function getMyIMotions(?IMotionStatusFilter $filter = null): array
     {
         $imotions = [];
         foreach ($this->getMyConsultation()->motions as $motion) {
@@ -121,6 +133,10 @@ class ConsultationAgendaItem extends ActiveRecord
                     $imotions[] = $amendment;
                 }
             }
+        }
+
+        if ($filter) {
+            $imotions = $filter->filterIMotions($imotions);
         }
 
         return $imotions;
@@ -222,8 +238,8 @@ class ConsultationAgendaItem extends ActiveRecord
                     $currParts[0] = chr(ord($currParts[0]) + 1);
                 } else {  // Numbers or mixtures of alphabetical characters and numbers
                     preg_match('/^(?<non_numeric>.*[^0-9])?(?<numeric>[0-9]*)$/su', $currParts[0], $matches);
-                    $nonNumeric   = $matches['non_numeric'];
-                    $numeric      = ($matches['numeric'] === '' ? 1 : $matches['numeric']);
+                    $nonNumeric   = $matches['non_numeric'] ?? '';
+                    $numeric      = (!isset($matches['numeric']) || $matches['numeric'] === '' ? 1 : $matches['numeric']);
                     $currParts[0] = $nonNumeric . ++$numeric;
                 }
 
@@ -318,26 +334,6 @@ class ConsultationAgendaItem extends ActiveRecord
     /**
      * @return IMotion[]
      */
-    public function getVisibleIMotions(bool $withdrawnAreVisible = true, bool $resolutionsAreVisible = true): array
-    {
-        $statuses = $this->getMyConsultation()->getStatuses()->getInvisibleMotionStatuses($withdrawnAreVisible);
-        if (!$resolutionsAreVisible) {
-            $statuses[] = IMotion::STATUS_RESOLUTION_PRELIMINARY;
-            $statuses[] = IMotion::STATUS_RESOLUTION_FINAL;
-        }
-        $return = [];
-        foreach ($this->getMyIMotions() as $imotion) {
-            if (!in_array($imotion->status, $statuses)) {
-                $return[] = $imotion;
-            }
-        }
-
-        return $return;
-    }
-
-    /**
-     * @return IMotion[]
-     */
     public function getResolutions(): array
     {
         $return = [];
@@ -348,16 +344,6 @@ class ConsultationAgendaItem extends ActiveRecord
         }
 
         return $return;
-    }
-
-    /**
-     * @return IMotion[]
-     */
-    public function getVisibleIMotionsSorted(bool $withdrawnAreVisible = true): array
-    {
-        $motions = $this->getVisibleIMotions($withdrawnAreVisible);
-
-        return MotionSorter::getSortedIMotionsFlat($this->getMyConsultation(), $motions);
     }
 
 

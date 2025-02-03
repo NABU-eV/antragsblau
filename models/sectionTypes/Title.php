@@ -2,7 +2,8 @@
 
 namespace app\models\sectionTypes;
 
-use app\components\latex\{Content, Exporter};
+use app\components\html2pdf\Content as HtmlToPdfContent;
+use app\components\latex\{Content as LatexContent, Exporter};
 use app\models\db\{AmendmentSection, Consultation};
 use app\models\forms\CommentForm;
 use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
@@ -16,7 +17,9 @@ class Title extends ISectionType
     {
         $type = $this->section->getSettings();
         $str  = '<div class="form-group plain-text" data-max-len="' . $type->maxLen . '">';
+
         $str .= $this->getFormLabel();
+        $str .= $this->getHintsAfterFormLabel();
 
         if ($type->maxLen != 0) {
             $len = abs($type->maxLen);
@@ -102,6 +105,11 @@ class Title extends ISectionType
         return ($this->section->getData() === '');
     }
 
+    public function showIfEmpty(): bool
+    {
+        return false;
+    }
+
     public function isFileUploadType(): bool
     {
         return false;
@@ -164,9 +172,8 @@ class Title extends ISectionType
         return $this->section->getData();
     }
 
-    public function printMotionTeX(bool $isRight, Content $content, Consultation $consultation): void
+    public function printMotionTeX(bool $isRight, LatexContent $content, Consultation $consultation): void
     {
-
         if ($isRight) {
             $content->textRight .= Exporter::encodePlainString($this->getMotionPlainText());
         } else {
@@ -174,7 +181,7 @@ class Title extends ISectionType
         }
     }
 
-    public function printAmendmentTeX(bool $isRight, Content $content): void
+    public function printAmendmentTeX(bool $isRight, LatexContent $content): void
     {
         /** @var AmendmentSection $section */
         $section = $this->section;
@@ -190,6 +197,34 @@ class Title extends ISectionType
             $content->textRight .= $tex;
         } else {
             $content->textMain .= $tex;
+        }
+    }
+
+    public function printMotionHtml2Pdf(bool $isRight, HtmlToPdfContent $content, Consultation $consultation): void
+    {
+        if ($isRight) {
+            $content->textRight .= $this->getMotionPlainHtml();
+        } else {
+            $content->textMain .= $this->getMotionPlainHtml();
+        }
+    }
+
+    public function printAmendmentHtml2Pdf(bool $isRight, HtmlToPdfContent $content): void
+    {
+        /** @var AmendmentSection $section */
+        $section = $this->section;
+        if ($section->getOriginalMotionSection() && $section->data === $section->getOriginalMotionSection()->getData()) {
+            return;
+        }
+
+        $html = '<h3 class="green">' . Html::encode($this->getTitle()) . '</h3>';
+
+        $html .= '<p><strong>' . \Yii::t('amend', 'title_amend_to') . ':</strong><br>' .
+                 Html::encode($this->section->getData()) . '</p>';
+        if ($isRight) {
+            $content->textRight .= $html;
+        } else {
+            $content->textMain .= $html;
         }
     }
 

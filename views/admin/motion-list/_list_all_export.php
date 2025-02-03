@@ -3,13 +3,14 @@
 /**
  * @var \app\controllers\Base $controller
  * @var Yii\web\View $this
+ * @var AdminMotionFilterForm $search
  * @var bool $hasProposedProcedures
  * @var bool $hasResponsibilities
  */
 
+use app\models\forms\AdminMotionFilterForm;
 use app\models\settings\Privileges;
 use app\components\{HTMLTools, UrlHelper};
-use app\models\settings\AntragsgruenApp;
 use yii\helpers\Html;
 
 $controller = $this->context;
@@ -19,9 +20,13 @@ $layout = $controller->layoutParams;
 $hasOpenslides = $consultation->getSettings()->openslidesExportEnabled;
 $hasInactiveFunctionality = (!$hasResponsibilities || !$hasProposedProcedures || !$hasOpenslides);
 
-$getExportLinkLi = function ($title, $route, $motionTypeId, $cssClass) {
-    $params     = array_merge($route, ['motionTypeId' => $motionTypeId, 'withdrawn' => '0']);
-    $paramsTmpl = array_merge($route, ['motionTypeId' => $motionTypeId, 'withdrawn' => 'WITHDRAWN']);
+$getExportLinkLi = function ($title, $route, $motionTypeId, $cssClass) use ($search) {
+    $params     = array_merge($route, ['motionTypeId' => $motionTypeId, 'inactive' => '0']);
+    $paramsTmpl = array_merge($route, ['motionTypeId' => $motionTypeId, 'inactive' => 'INACTIVE']);
+    if (!$search->isDefaultSettings()) {
+        $params = array_merge($params, $search->getSearchUrlParams());
+        $paramsTmpl = array_merge($paramsTmpl, $search->getSearchUrlParams());
+    }
     if ($route[0] === 'amendment/pdfcollection') {
         $params['filename']     = Yii::t('con', 'feed_amendments') . '.pdf';
         $paramsTmpl['filename'] = Yii::t('con', 'feed_amendments') . '.pdf';
@@ -126,7 +131,7 @@ $btnFunctions = $consultation->havePrivilege(Privileges::PRIVILEGE_CONSULTATION_
                 </button>
                 <ul class="dropdown-menu" aria-labelledby="exportMotionBtn<?= $motionType->id ?>">
                     <li class="checkbox"><label>
-                            <input type="checkbox" class="withdrawn" name="withdrawn">
+                            <input type="checkbox" class="inactive" name="inactive">
                             <?= Yii::t('export', 'incl_inactive') ?>
                         </label></li>
                     <li role="separator" class="divider"></li>
@@ -174,7 +179,7 @@ $btnFunctions = $consultation->havePrivilege(Privileges::PRIVILEGE_CONSULTATION_
             </button>
             <ul class="dropdown-menu" aria-labelledby="exportAmendmentsBtn">
                 <li class="checkbox"><label>
-                        <input type="checkbox" class="withdrawn" name="withdrawn">
+                        <input type="checkbox" class="inactive" name="inactive">
                         <?= Yii::t('export', 'incl_inactive') ?>
                     </label></li>
                 <li role="separator" class="divider"></li>

@@ -2,7 +2,7 @@
 
 use app\components\UrlHelper;
 use app\models\sectionTypes\ISectionType;
-use app\models\settings\{PrivilegeQueryContext, Privileges};
+use app\models\settings\{Consultation as ConsultationSettings, PrivilegeQueryContext, Privileges};
 use app\models\db\{Motion, MotionComment, MotionSupporter, User};
 use app\models\forms\CommentForm;
 use app\models\policies\IPolicy;
@@ -10,6 +10,7 @@ use app\views\motion\LayoutHelper;
 use yii\helpers\Html;
 
 /**
+ * @var bool $reducedNavigation
  * @var \yii\web\View $this
  * @var Motion $motion
  * @var int[] $openedComments
@@ -34,6 +35,22 @@ if ($hasPp && $hasPpAdminbox) {
     $layout->loadSelectize();
 }
 
+if (
+    $consultation->getSettings()->startLayoutType === ConsultationSettings::START_LAYOUT_TAGS && $consultation->getSettings()->homepageByTag &&
+    count($motion->tags) > 0
+) {
+    if ($motion->isResolution()) {
+        if ($consultation->getSettings()->startLayoutResolutions === ConsultationSettings::START_LAYOUT_RESOLUTIONS_SEPARATE) {
+            $layout->addBreadcrumb(Yii::t('con', 'resolutions'), UrlHelper::createUrl(['/consultation/resolutions']));
+        }
+        $layout->addBreadcrumb(Yii::t('admin', 'bread_tag'), UrlHelper::createUrl(['/consultation/tags-resolutions', 'tagId' => $motion->tags[0]->id]));
+    } else {
+        if ($consultation->getSettings()->startLayoutResolutions === ConsultationSettings::START_LAYOUT_RESOLUTIONS_DEFAULT) {
+            $layout->addBreadcrumb(Yii::t('con', 'All Motions'), UrlHelper::createUrl(['/consultation/motions']));
+        }
+        $layout->addBreadcrumb(Yii::t('admin', 'bread_tag'), UrlHelper::createUrl(['/consultation/tags-motions', 'tagId' => $motion->tags[0]->id]));
+    }
+}
 if ($controller->isRequestSet('backUrl') && $controller->isRequestSet('backTitle')) {
     $layout->addBreadcrumb($controller->getRequestValue('backTitle'), $controller->getRequestValue('backUrl'));
 }
@@ -92,6 +109,8 @@ if ($consultation->getSettings()->hasSpeechLists) {
 
 echo $layout->getMiniMenu('motionSidebarSmall');
 
+echo $this->render('_view_prevnext', ['motion' => $motion, 'top' => true, 'reducedNavigation' => $reducedNavigation]);
+
 echo '<div class="motionData" style="min-height: ' . $minHeight . 'px;">';
 
 include(__DIR__ . DIRECTORY_SEPARATOR . '_view_motiondata.php');
@@ -106,6 +125,9 @@ if ($supportCollectingStatus) {
     $curr          = count($motion->getSupporters(true));
     if ($motion->hasEnoughSupporters($supportType)) {
         $textTmpl = $motion->getMyMotionType()->getConsultationTextWithFallback('motion', 'support_collection_reached_hint');
+        if ($supportType->getSettingsObj()->allowMoreSupporters) {
+            $textTmpl .= ' ' . $motion->getMyMotionType()->getConsultationTextWithFallback('motion', 'support_collection_reached_hint_m');
+        }
         echo str_replace(['%MIN%', '%CURR%'], [$min, $curr], $textTmpl);
     } else {
         $minAll        = $min + 1;
@@ -346,3 +368,5 @@ if ($commentWholeMotions && $maySeeComments && !$motion->isResolution() && !$alt
 
     echo '</section>';
 }
+
+echo $this->render('_view_prevnext', ['motion' => $motion, 'top' => false, 'reducedNavigation' => $reducedNavigation]);

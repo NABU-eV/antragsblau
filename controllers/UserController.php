@@ -3,7 +3,7 @@
 namespace app\controllers;
 
 use app\models\http\{HtmlErrorResponse, HtmlResponse, JsonResponse, RedirectResponse, ResponseInterface};
-use app\components\{Captcha, ConsultationAccessPassword, JwtCreator, RequestContext, Tools, UrlHelper};
+use app\components\{Captcha, ConsultationAccessPassword, JwtCreator, RequestContext, SecondFactorAuthentication, Tools, UrlHelper};
 use app\models\db\{AmendmentSupporter, EMailBlocklist, FailedLoginAttempt, MotionSupporter, User, UserConsultationScreening, UserNotification};
 use app\models\events\UserEvent;
 use app\models\exceptions\{ExceptionBase, FormError, Login, MailNotSent, ServerConfiguration};
@@ -14,14 +14,32 @@ use yii\web\Response;
 
 class UserController extends Base
 {
+    public const VIEW_ID_LOGIN_LOGIN = 'login';
+    public const VIEW_ID_LOGIN_FORCE_PWD_CHANGE = 'login-force-pwd-change';
+    public const VIEW_ID_LOGIN_FORCE_EMAIL_CONFIRM = 'confirmregistration';
+    public const VIEW_ID_LOGIN_FORCE_2FA_REGISTRATION = 'login2fa-force-registration';
+    public const VIEW_ID_LOGIN_2FA = 'login2fa';
+    public const VIEW_ID_MYACCOUNT = 'myaccount';
+
     public $enableCsrfValidation = false;
 
     // Login and Mainainance mode is always allowed
     public ?bool $allowNotLoggedIn = true;
 
+    private SecondFactorAuthentication $secondFactorAuthentication;
+
+    public function beforeAction($action): bool
+    {
+        $result = parent::beforeAction($action);
+
+        $this->secondFactorAuthentication = new SecondFactorAuthentication(RequestContext::getSession());
+
+        return $result;
+    }
+
     protected function loginUser(User $user): void
     {
-        RequestContext::getUser()->login($user, $this->getParams()->autoLoginDuration);
+        RequestContext::getYiiUser()->login($user, $this->getParams()->autoLoginDuration);
 
         $user->dateLastLogin = date('Y-m-d H:i:s');
         $user->save();
@@ -40,7 +58,7 @@ class UserController extends Base
             $backUrl = '/';
         }
 
-        $usernamePasswordForm = new LoginUsernamePasswordForm(User::getExternalAuthenticator());
+        $usernamePasswordForm = new LoginUsernamePasswordForm(RequestContext::getSession(), User::getExternalAuthenticator());
 
         $conPwdConsultation = $this->consultation;
         if ($this->getHttpRequest()->get('passConId')) {
@@ -55,16 +73,26 @@ class UserController extends Base
             $usernamePasswordForm->setAttributes($this->getHttpRequest()->post());
             try {
                 $user = $usernamePasswordForm->getOrCreateUser($this->site);
-                $this->loginUser($user);
-
-                $unconfirmed = ($user->status === User::STATUS_UNCONFIRMED);
-                if ($unconfirmed && $this->getParams()->confirmEmailAddresses) {
+                if ($user->status === User::STATUS_UNCONFIRMED && $this->getParams()->confirmEmailAddresses) {
+                    // Needs to confirm e-mail-address before actually being logged in
+                    $usernamePasswordForm->setLoggedInAwaitingEmailConfirmation($user);
                     $backUrl = UrlHelper::createUrl([
-                        'user/confirmregistration',
+                        '/user/confirmregistration',
                         'backUrl' => $backUrl,
-                        'email'   => $user->email,
+                        'email' => $user->email,
                     ]);
+                } elseif ($user->getSettingsObj()->forcePasswordChange) {
+                    // Needs to change password before actually being logged in
+                    $usernamePasswordForm->setLoggedInAwaitingPasswordChange($user);
+                    $backUrl = UrlHelper::createUrl([
+                        '/user/login-force-pwd-change',
+                        'backUrl' => $backUrl,
+                    ]);
+                } elseif ($return = $this->secondFactorAuthentication->onUsernamePwdLoginSuccess($user)) {
+                    // Needs to perform 2FA before actually being logged in
+                    return $return;
                 } else {
+                    $this->loginUser($user);
                     $this->getHttpSession()->setFlash('success', \Yii::t('user', 'welcome'));
                 }
 
@@ -85,7 +113,7 @@ class UserController extends Base
                 $conPwd->setCorrectCookie();
                 return new RedirectResponse($backUrl);
             } else {
-                $conPwdErr = 'Invalid password';
+                $conPwdErr = \Yii::t('user', 'login_err_password');
             }
         }
 
@@ -105,32 +133,176 @@ class UserController extends Base
         ));
     }
 
+    public function actionLogin2fa(string $backUrl = ''): ResponseInterface
+    {
+        $loggingInUser = $this->secondFactorAuthentication->getOngoingSessionUser();
+        if (!$loggingInUser) {
+            $minutes = SecondFactorAuthentication::TIMEOUT_2FA_SESSION / 60;
+            $msg = str_replace('%minutes%', (string) $minutes, \Yii::t('user', 'err_2fa_timeout'));
+            $this->getHttpSession()->setFlash('error', $msg);
+
+            return new RedirectResponse(UrlHelper::createUrl('/user/login'));
+        }
+
+        if ($backUrl === '') {
+            $backUrl = '/';
+        }
+
+        $error = null;
+        if ($this->isPostSet('2fa') && trim($this->getPostValue('2fa'))) {
+            if (Captcha::needsCaptcha($loggingInUser->email) && !Captcha::checkEnteredCaptcha($this->getRequestValue('captcha'))) {
+                $error = \Yii::t('user', 'login_err_captcha');
+                goto loginForm;
+            }
+
+            $successUser = $this->secondFactorAuthentication->confirmLoginWithSecondFactor($this->getPostValue('2fa'));
+            if (!$successUser) {
+                FailedLoginAttempt::logAttempt($loggingInUser->email);
+                $error = \Yii::t('user', 'err_2fa_incorrect');
+                goto loginForm;
+            }
+
+            $this->loginUser($successUser);
+            $this->getHttpSession()->setFlash('success', \Yii::t('user', 'welcome'));
+
+            return new RedirectResponse($backUrl);
+        }
+
+        $this->secondFactorAuthentication->getOngoingSessionUser();
+
+        loginForm:
+        $resp =  new HtmlResponse($this->render('login-2fa', [
+            'captchaUsername' => $loggingInUser->email,
+            'error' => $error,
+        ]));
+
+        $this->secondFactorAuthentication->getOngoingSessionUser();
+
+        return $resp;
+    }
+
+    public function actionLogin2faForceRegistration(string $backUrl = ''): ResponseInterface
+    {
+        try {
+            $loggingInUser = $this->secondFactorAuthentication->getForcedRegistrationUser();
+        } catch (\Exception $e) {
+            $this->getHttpSession()->setFlash('error', $e->getMessage());
+
+            return new RedirectResponse(UrlHelper::createUrl('/user/login'));
+        }
+
+        if ($backUrl === '') {
+            $backUrl = '/';
+        }
+
+        $error = null;
+        if ($this->isPostSet('set2fa') && trim($this->getPostValue('set2fa'))) {
+            if (Captcha::needsCaptcha($loggingInUser->email) && !Captcha::checkEnteredCaptcha($this->getRequestValue('captcha'))) {
+                $error = \Yii::t('user', 'login_err_captcha');
+                goto loginForm;
+            }
+
+            try {
+                $successUser = $this->secondFactorAuthentication->attemptForcedRegisteringSecondFactor(trim($this->getPostValue('set2fa')));
+                $this->loginUser($successUser);
+                $this->getHttpSession()->setFlash('success', \Yii::t('user', 'welcome'));
+
+                return new RedirectResponse($backUrl);
+            } catch (\RuntimeException $e) {
+                $error = $e->getMessage();
+                FailedLoginAttempt::logAttempt($loggingInUser->email);
+            }
+        }
+
+        loginForm:
+        return new HtmlResponse($this->render('login-2fa-force-registration', [
+            'error' => $error,
+            'captchaUsername' => $loggingInUser->email,
+            'addSecondFactorKey' => $this->secondFactorAuthentication->createForcedRegistrationSecondFactor(),
+        ]));
+    }
+
+    public function actionLoginForcePwdChange(string $backUrl = ''): ResponseInterface
+    {
+        if ($backUrl === '') {
+            $backUrl = '/';
+        }
+
+        $usernamePasswordForm = new LoginUsernamePasswordForm(RequestContext::getSession(), User::getExternalAuthenticator());
+        $sessionUser = $usernamePasswordForm->getOngoingPwdChangeSession();
+        if (!$sessionUser) {
+            return new RedirectResponse($backUrl);
+        }
+
+        $pwMinLen = LoginUsernamePasswordForm::PASSWORD_MIN_LEN;
+
+        $error = null;
+        if ($this->isPostSet('change') && $this->getPostValue('pwd')) {
+            if ($this->getPostValue('pwd') !== $this->getPostValue('pwd2')) {
+                $error = \Yii::t('user', 'err_pwd_different');
+            } elseif (grapheme_strlen($this->getPostValue('pwd')) < $pwMinLen) {
+                $msg = \Yii::t('user', 'err_pwd_length');
+                $error = str_replace('%MINLEN%', (string)$pwMinLen, $msg);
+            } else {
+                $sessionUser->pwdEnc = password_hash($this->getPostValue('pwd'), PASSWORD_DEFAULT);
+                $settings = $sessionUser->getSettingsObj();
+                $settings->forcePasswordChange = false;
+                $sessionUser->setSettingsObj($settings);
+
+                $this->loginUser($sessionUser);
+                $this->getHttpSession()->setFlash('success', \Yii::t('user', 'welcome'));
+
+                return new RedirectResponse($backUrl);
+            }
+        }
+
+        return new HtmlResponse($this->render('login-force-pwd-change', [
+            'pwMinLen' => $pwMinLen,
+            'user' => $sessionUser,
+            'error' => $error,
+        ]));
+    }
+
     public function actionToken(): JsonResponse
     {
         return new JsonResponse(JwtCreator::getJwtConfigForCurrUser($this->consultation));
     }
 
-    public function actionConfirmregistration(string $backUrl = '', string $email = ''): HtmlResponse
+    public function actionConfirmregistration(string $backUrl = '', string $email = ''): ResponseInterface
     {
         $msgError = '';
+        $prefillCode = '';
+        $usernamePasswordForm = new LoginUsernamePasswordForm(RequestContext::getSession(), User::getExternalAuthenticator());
+        $ongoingSessionUser = $usernamePasswordForm->getOngoingEmailConfirmationSessionUser();
 
-        if ($this->isRequestSet('email') && $this->isRequestSet('code')) {
+        if ($this->isRequestSet('resend') && $ongoingSessionUser && !$ongoingSessionUser->hasTooRecentRecoveryEmail()) {
+            $usernamePasswordForm->sendConfirmationEmail($ongoingSessionUser);
+        } elseif ($this->isRequestSet('email') && $this->isRequestSet('code')) {
             /** @var User|null $user */
             $user = User::findOne(['auth' => 'email:' . $this->getRequestValue('email')]);
             if (!$user) {
                 $msgError = \Yii::t('user', 'err_email_acc_notfound');
             } elseif ($user->emailConfirmed === 1) {
                 $msgError = \Yii::t('user', 'err_email_acc_confirmed');
+            } elseif (Captcha::needsCaptcha($user->email) && !Captcha::checkEnteredCaptcha($this->getRequestValue('captcha'))) {
+                $msgError = \Yii::t('user', 'login_err_captcha');
+                $prefillCode = trim($this->getRequestValue('code', '')); // When coming from an e-mail, only ask for captcha
             } elseif ($user->checkEmailConfirmationCode(trim($this->getRequestValue('code')))) {
                 $user->emailConfirmed = 1;
                 $user->status         = User::STATUS_CONFIRMED;
                 if ($user->save()) {
                     $user->trigger(User::EVENT_ACCOUNT_CONFIRMED, new UserEvent($user));
-                    $this->loginUser($user);
+                    if ($usernamePasswordForm->hasOngoingEmailConfirmationSession($user)) {
+                        $this->loginUser($user);
+                    }
 
                     if ($this->consultation && $this->consultation->getSettings()->managedUserAccounts) {
-                        UserConsultationScreening::askForConsultationPermission($user, $this->consultation);
-                        $needsAdminScreening = true;
+                        if ($this->consultation->getSettings()->allowRequestingAccess) {
+                            UserConsultationScreening::askForConsultationPermission($user, $this->consultation);
+                            $needsAdminScreening = true;
+                        } else {
+                            return new RedirectResponse(UrlHelper::createUrl('/user/consultationaccesserror', $this->consultation));
+                        }
                     } else {
                         $needsAdminScreening = false;
                     }
@@ -139,15 +311,18 @@ class UserController extends Base
                 }
             } else {
                 $msgError = \Yii::t('user', 'err_code_wrong');
+                FailedLoginAttempt::logAttempt($user->email);
             }
         }
 
         return new HtmlResponse($this->render(
             'confirm_registration',
             [
-                'email'   => $email,
-                'errors'  => $msgError,
-                'backUrl' => $backUrl
+                'email' => $email,
+                'prefillCode' => $prefillCode,
+                'errors' => $msgError,
+                'backUrl' => $backUrl,
+                'allowResend' => ($ongoingSessionUser && !$ongoingSessionUser->hasTooRecentRecoveryEmail()),
             ]
         ));
     }
@@ -172,7 +347,7 @@ class UserController extends Base
             }
         }
 
-        RequestContext::getUser()->logout();
+        RequestContext::getYiiUser()->logout();
         return new RedirectResponse($backUrl, RedirectResponse::REDIRECT_TEMPORARY);
     }
 
@@ -189,6 +364,8 @@ class UserController extends Base
             } elseif (!$user) {
                 $msg = str_replace('%USER%', $email, \Yii::t('user', 'err_user_notfound'));
                 $this->getHttpSession()->setFlash('error', $msg);
+            } elseif ($user->getSettingsObj()->preventPasswordChange) {
+                $this->getHttpSession()->setFlash('error', \Yii::t('user', 'err_pwd_fixed'));
             } else {
                 try {
                     $user->sendRecoveryMail();
@@ -251,6 +428,8 @@ class UserController extends Base
         $user     = User::getCurrentUser();
         $pwMinLen = LoginUsernamePasswordForm::PASSWORD_MIN_LEN;
 
+        $params = AntragsgruenApp::getInstance();
+
         if ($this->isPostSet('resendEmailChange')) {
             $changeRequested = $user->getChangeRequestedEmailAddress();
             if ($changeRequested) {
@@ -270,9 +449,12 @@ class UserController extends Base
         }
         if ($this->isPostSet('save')) {
             $post = $this->getHttpRequest()->post();
-            $user->nameGiven = $post['name_given'] ?? '';
-            $user->nameFamily = $post['name_family'] ?? '';
-            $user->name = trim($user->nameGiven . ' ' . $user->nameFamily);
+
+            if (($user->fixedData & User::FIXED_NAME) === 0) {
+                $user->nameGiven = $post['name_given'] ?? '';
+                $user->nameFamily = $post['name_family'] ?? '';
+                $user->name = trim($user->nameGiven . ' ' . $user->nameFamily);
+            }
 
             $selectableOrganisations = $user->getSelectableUserOrganizations();
             if (isset($post['orgaPrimary']) && $selectableOrganisations) {
@@ -283,7 +465,7 @@ class UserController extends Base
                 }
             }
 
-            if ($post['pwd'] !== '' || $post['pwd2'] !== '') {
+            if (!$user->getSettingsObj()->preventPasswordChange && ($post['pwd'] !== '' || $post['pwd2'] !== '')) {
                 if ($post['pwd'] !== $post['pwd2']) {
                     $this->getHttpSession()->setFlash('error', \Yii::t('user', 'err_pwd_different'));
                 } elseif (grapheme_strlen($post['pwd']) < $pwMinLen) {
@@ -291,6 +473,21 @@ class UserController extends Base
                     $this->getHttpSession()->setFlash('error', str_replace('%MINLEN%', (string)$pwMinLen, $msg));
                 } else {
                     $user->pwdEnc = password_hash($post['pwd'], PASSWORD_DEFAULT);
+                }
+            }
+
+            if ($user->supportsSecondFactorAuth() && isset($post['set2fa']) && trim($post['set2fa'])) {
+                try {
+                    $this->secondFactorAuthentication->attemptRegisteringSecondFactor($user, $post['set2fa']);
+                } catch (\RuntimeException $e) {
+                    $this->getHttpSession()->setFlash('error', $e->getMessage());
+                }
+            }
+
+            if ($user->supportsSecondFactorAuth() && isset($post['remove2fa']) && trim($post['remove2fa'])) {
+                $error = $this->secondFactorAuthentication->attemptRemovingSecondFactor($user, $post['remove2fa']);
+                if ($error) {
+                    $this->getHttpSession()->setFlash('error', $error);
                 }
             }
 
@@ -305,7 +502,6 @@ class UserController extends Base
             }
 
             if ($post['email'] != '' && $post['email'] != $user->email) {
-                $params = AntragsgruenApp::getInstance();
                 if ($params->confirmEmailAddresses) {
                     $changeRequested = $user->getChangeRequestedEmailAddress();
                     if ($changeRequested && $changeRequested == $post['email']) {
@@ -330,9 +526,9 @@ class UserController extends Base
             }
         }
 
-        if ($this->isPostSet('accountDeleteConfirm') && $this->isPostSet('accountDelete')) {
+        if ($this->isPostSet('accountDeleteConfirm') && $this->isPostSet('accountDelete') && $params->allowAccountDeletion) {
             $user->deleteAccount();
-            RequestContext::getUser()->logout(true);
+            RequestContext::getYiiUser()->logout(true);
             return new HtmlResponse($this->render('account_deleted'));
         }
 
@@ -342,10 +538,23 @@ class UserController extends Base
             $emailBlocked = false;
         }
 
+        if ($this->secondFactorAuthentication->userHasSecondFactorSetUp($user)) {
+            $hasSecondFactor = true;
+            $canRemoveSecondFactor = !$this->secondFactorAuthentication->isForcedToSetupSecondFactor($user);
+            $addSecondFactorKey = null;
+        } else {
+            $hasSecondFactor = false;
+            $canRemoveSecondFactor = false;
+            $addSecondFactorKey = $this->secondFactorAuthentication->createSecondFactorKey($user);
+        }
+
         return new HtmlResponse($this->render('my_account', [
             'user' => $user,
             'emailBlocked' => $emailBlocked,
             'pwMinLen' => $pwMinLen,
+            'hasSecondFactor' => $hasSecondFactor,
+            'canRemoveSecondFactor' => $canRemoveSecondFactor,
+            'addSecondFactorKey' => $addSecondFactorKey,
         ]));
     }
 
@@ -465,13 +674,13 @@ class UserController extends Base
     {
         $user = User::getCurrentUser();
 
-        if ($this->isPostSet('askPermission')) {
+        if ($this->isPostSet('askPermission') && $this->consultation->getSettings()->allowRequestingAccess) {
             UserConsultationScreening::askForConsultationPermission($user, $this->consultation);
             $this->consultation->refresh();
         }
 
         if ($user) {
-            $askForPermission   = true;
+            $askForPermission   = $this->consultation->getSettings()->allowRequestingAccess;
             $askedForPermission = false;
             foreach ($this->consultation->screeningUsers as $screening) {
                 if ($screening->userId === $user->id) {

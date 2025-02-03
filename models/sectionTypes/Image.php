@@ -2,8 +2,8 @@
 
 namespace app\models\sectionTypes;
 
-use app\components\{latex\Content, Tools, UrlHelper};
-use app\models\db\{AmendmentSection, Consultation, MotionSection};
+use app\components\{latex\Content as LatexContent, html2pdf\Content as HtmlToPdfContent, Tools, UrlHelper};
+use app\models\db\{AmendmentSection, Consultation, ConsultationSettingsMotionSection, MotionSection};
 use app\models\exceptions\{FormError, Internal};
 use app\models\settings\AntragsgruenApp;
 use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
@@ -69,14 +69,20 @@ class Image extends ISectionType
         $str  = '<section class="section' . $this->section->sectionId . ' type' . static::TYPE_IMAGE . '">';
         if ($url) {
             $str      .= '<img src="' . Html::encode($this->getImageUrl()) . '" alt="' . \Yii::t('motion', 'image_current') . '" class="currentImage">';
-            $required = false;
+            $required = '';
         } else {
-            $required = ($type->required ? 'required' : '');
+            $required = match ($type->required) {
+                ConsultationSettingsMotionSection::REQUIRED_YES => 'required',
+                ConsultationSettingsMotionSection::REQUIRED_ENCOURAGED => 'data-encouraged="true"',
+                default => '',
+            };
         }
         $str .= '<div class="form-group">';
-        $str .= $this->getFormLabel();
 
-        $maxSize = floor(Tools::getMaxUploadSize() / 1024 / 1024);
+        $str .= $this->getFormLabel();
+        $str .= $this->getHintsAfterFormLabel();
+
+        $maxSize = (string) floor(Tools::getMaxUploadSize() / 1024 / 1024);
         $str     .= '<div class="maxLenHint"><span class="icon glyphicon glyphicon-info-sign" aria-hidden="true"></span> ';
         $str     .= str_replace('%MB%', $maxSize, \Yii::t('motion', 'max_size_hint'));
         $str     .= '</div>';
@@ -89,7 +95,7 @@ class Image extends ISectionType
         $str .= '<input type="file" class="form-control" id="sections_' . $type->id . '" ' . $required .
                 ' accept="' . implode(', ', $inputTypes) . '"' .
                 ' name="sections[' . $type->id . ']">';
-        if ($url && !$type->required) {
+        if ($url && $type->required !== ConsultationSettingsMotionSection::REQUIRED_YES) {
             $str .= '<label class="deleteImage"><input type="checkbox" name="sectionDelete[' . $type->id . ']">';
             $str .= \Yii::t('motion', 'img_delete');
             $str .= '</label>';
@@ -108,14 +114,14 @@ class Image extends ISectionType
     {
         $app = AntragsgruenApp::getInstance();
         if ($app->imageMagickPath === null) {
-            return file_get_contents($filename);
+            return (file_exists($filename) ? (string)file_get_contents($filename) : '');
         } elseif (!file_exists($app->imageMagickPath)) {
             throw new Internal('ImageMagick not correctly set up');
         }
 
         $tmpfile = $app->getTmpDir() . uniqid('image-conv-') . "." . $targetType;
         exec($app->imageMagickPath . ' -strip ' . escapeshellarg($filename) . ' ' . escapeshellarg($tmpfile));
-        $converted = (file_exists($tmpfile) ? file_get_contents($tmpfile) : '');
+        $converted = (file_exists($tmpfile) ? (string)file_get_contents($tmpfile) : '');
         unlink($tmpfile);
         return $converted;
     }
@@ -149,7 +155,7 @@ class Image extends ISectionType
         exec($app->imageMagickPath . ' -strip -geometry ' . IntVal($width) . 'x' . IntVal($height) . ' '
             . escapeshellarg($tmpfile1) . ' ' . escapeshellarg($tmpfile2));
 
-        $converted = (file_exists($tmpfile2) ? file_get_contents($tmpfile2) : '');
+        $converted = (file_exists($tmpfile2) ? (string)file_get_contents($tmpfile2) : '');
         unlink($tmpfile1);
         unlink($tmpfile2);
 
@@ -171,7 +177,7 @@ class Image extends ISectionType
         $pngFilename = $app->getTmpDir() . uniqid('pdf-') . '.png';
         file_put_contents($gifFilename, $gifData);
         exec($app->imageMagickPath . ' ' . escapeshellarg($gifFilename . '[0]') . ' ' . escapeshellarg($pngFilename));
-        $data = file_get_contents($pngFilename);
+        $data = (string)file_get_contents($pngFilename);
         unlink($pngFilename);
         unlink($gifFilename);
         return $data;
@@ -196,7 +202,7 @@ class Image extends ISectionType
         }
 
         $imagedata = getimagesize($data['tmp_name']);
-        if (!$imagedata) {
+        if (!$imagedata || !$mime) {
             throw new FormError('Could not read image.');
         }
 
@@ -206,14 +212,14 @@ class Image extends ISectionType
         }
         $optimized = static::getOptimizedImage($data['tmp_name'], $fileExt);
 
-        $metadata                = [
+        $metadata = [
             'width'    => $imagedata[0],
             'height'   => $imagedata[1],
             'filesize' => strlen($optimized),
             'mime'     => $mime
         ];
         $this->section->setData($optimized);
-        $this->section->metadata = json_encode($metadata);
+        $this->section->metadata = json_encode($metadata, JSON_THROW_ON_ERROR);
 
         foreach ($toDeleteTmpFiles as $deleteTmpFile) {
             unlink($deleteTmpFile);
@@ -246,8 +252,6 @@ class Image extends ISectionType
             return '';
         }
 
-        /** @var MotionSection $section */
-        $section = $this->section;
         $url     = $this->getImageUrl($this->absolutizeLinks, $showAlways);
 
         return '<img src="' . Html::encode($url) . '" alt="' . Html::encode($this->getTitle()) . '">';
@@ -259,6 +263,11 @@ class Image extends ISectionType
         // but no metadata is set. Don't show the image in this case, as nothing was to be changed anyway.
         $invalidAmendmentImageWorkaround = (is_a($this->section, AmendmentSection::class) && $this->section->metadata === null);
         return ($this->section->getData() === '' || $invalidAmendmentImageWorkaround);
+    }
+
+    public function showIfEmpty(): bool
+    {
+        return false;
     }
 
     public function isFileUploadType(): bool
@@ -311,21 +320,13 @@ class Image extends ISectionType
         }
 
         $img = '@' . $imageData;
-        switch ($metadata['mime']) {
-            case 'image/png':
-                $type = 'PNG';
-                break;
-            case 'image/jpg':
-            case 'image/jpeg':
-                $type = 'JPEG';
-                break;
-            case 'image/gif':
-                $type = 'GIF';
-                break;
-            default:
-                $type = '';
-        }
-        $pdf->Image($img, '', '', $size[0], $size[1], $type, '', '', true, 300, 'C');
+        $type = match ($metadata['mime']) {
+            'image/png' => 'PNG',
+            'image/jpg', 'image/jpeg' => 'JPEG',
+            'image/gif' => 'GIF',
+            default => '',
+        };
+        $pdf->Image($img, null, null, $size[0], $size[1], $type, '', '', true, 300, 'C');
         $pdf->Ln($size[1] + 7);
     }
 
@@ -344,7 +345,7 @@ class Image extends ISectionType
         return ($this->isEmpty() ? '' : '[IMAGE]');
     }
 
-    public function printMotionTeX(bool $isRight, Content $content, Consultation $consultation): void
+    public function printMotionTeX(bool $isRight, LatexContent $content, Consultation $consultation): void
     {
         if ($this->isEmpty()) {
             return;
@@ -356,11 +357,11 @@ class Image extends ISectionType
         $extraSettings = $this->section->getSettings()->getSettingsObj();
         $maxHeight     = ($extraSettings->imgMaxHeight > 0 ? $extraSettings->imgMaxHeight : null);
 
-        $fileExt      = static::getFileExtensionFromMimeType($metadata['mime']);
+        $fileExt = static::getFileExtensionFromMimeType($metadata['mime']);
         if ($isRight) {
-            $imageData          = $this->resizeIfMassivelyTooBig(500, 1000, $fileExt);
+            $imageData = $this->resizeIfMassivelyTooBig(500, 1000, $fileExt);
         } else {
-            $imageData         = $this->resizeIfMassivelyTooBig(1500, 3000, $fileExt);
+            $imageData = $this->resizeIfMassivelyTooBig(1500, 3000, $fileExt);
         }
 
         if ($fileExt === 'gif') {
@@ -384,7 +385,44 @@ class Image extends ISectionType
         $content->imageData[$filenameBase] = $imageData;
     }
 
-    public function printAmendmentTeX(bool $isRight, Content $content): void
+    public function printAmendmentTeX(bool $isRight, LatexContent $content): void
+    {
+        if ($isRight) {
+            $content->textRight .= ($this->isEmpty() ? '' : '[IMAGE]');
+        } else {
+            $content->textMain .= ($this->isEmpty() ? '' : '[IMAGE]');
+        }
+    }
+
+    public function printMotionHtml2Pdf(bool $isRight, HtmlToPdfContent $content, Consultation $consultation): void
+    {
+        if ($this->isEmpty()) {
+            return;
+        }
+
+        $metadata = json_decode($this->section->metadata, true);
+
+        $fileExt = static::getFileExtensionFromMimeType($metadata['mime']);
+        if ($isRight) {
+            $imageData = $this->resizeIfMassivelyTooBig(500, 1000, $fileExt);
+        } else {
+            $imageData = $this->resizeIfMassivelyTooBig(1500, 3000, $fileExt);
+        }
+
+        $params   = AntragsgruenApp::getInstance();
+        $filenameBase = uniqid('motion-pdf-image') . '.' . $fileExt;
+        $filenameHtml = $params->getTmpDir() . $filenameBase;
+
+        if ($isRight) {
+            $content->textRight .= '<img src="' . Html::encode($filenameHtml) . '" alt="image">';
+        } else {
+            $content->textMain .= '<img src="' . Html::encode($filenameHtml) . '" alt="image">';
+        }
+
+        $content->imageData[$filenameBase] = $imageData;
+    }
+
+    public function printAmendmentHtml2Pdf(bool $isRight, HtmlToPdfContent $content): void
     {
         if ($isRight) {
             $content->textRight .= ($this->isEmpty() ? '' : '[IMAGE]');

@@ -47,18 +47,13 @@ abstract class SupportBase
      */
     public static function getImplementation(InitiatorForm $settings, ConsultationMotionType $motionType): SupportBase
     {
-        switch ($settings->type) {
-            case static::ONLY_INITIATOR:
-                return new OnlyInitiator($motionType, $settings);
-            case static::GIVEN_BY_INITIATOR:
-                return new GivenByInitiator($motionType, $settings);
-            case static::COLLECTING_SUPPORTERS:
-                return new CollectBeforePublish($motionType, $settings);
-            case static::NO_INITIATOR:
-                return new NoInitiator($motionType, $settings);
-            default:
-                throw new Internal('Supporter form type not found');
-        }
+        return match ($settings->type) {
+            static::ONLY_INITIATOR => new OnlyInitiator($motionType, $settings),
+            static::GIVEN_BY_INITIATOR => new GivenByInitiator($motionType, $settings),
+            static::COLLECTING_SUPPORTERS => new CollectBeforePublish($motionType, $settings),
+            static::NO_INITIATOR => new NoInitiator($motionType, $settings),
+            default => throw new Internal('Supporter form type not found'),
+        };
     }
 
     /**
@@ -92,7 +87,7 @@ abstract class SupportBase
         $this->fixSettings();
     }
 
-    protected function fixSettings()
+    protected function fixSettings(): void
     {
     }
 
@@ -144,7 +139,7 @@ abstract class SupportBase
                 $sup->userId     = null;
                 $sup->personType = ISupporter::PERSON_NATURAL;
                 $sup->position   = $i;
-                if (isset($post['supporters']['organization']) && isset($post['supporters']['organization'][$i])) {
+                if (isset($post['supporters']['organization'][$i])) {
                     $sup->organization = trim($post['supporters']['organization'][$i]);
                 }
                 $ret[] = $sup;
@@ -185,29 +180,34 @@ abstract class SupportBase
             $errors[] = \Yii::t('motion', 'err_invalid_phone');
         }
 
-        $personType = IntVal($initiator['personType']);
-        if ($personType === ISupporter::PERSON_NATURAL && !$settings->initiatorCanBePerson) {
-            $errors[] = 'Invalid person type.';
+        if (!isset($initiator['personType'])) {
+            $errors[] = \Yii::t('motion', 'err_invalid_person_type');
+            $personType = null;
+        } else {
+            $personType = intval($initiator['personType']);
         }
-        if ($personType === ISupporter::PERSON_ORGANIZATION && !$settings->initiatorCanBeOrganization) {
-            $errors[] = 'Invalid person type.';
+        if ($personType === ISupporter::PERSON_NATURAL && !$settings->canSupportAsPerson($this->motionType->getConsultation())) {
+            $errors[] = \Yii::t('motion', 'err_invalid_person_type');
+        }
+        if ($personType === ISupporter::PERSON_ORGANIZATION && !$settings->canSupportAsOrganization($this->motionType->getConsultation())) {
+            $errors[] = \Yii::t('motion', 'err_invalid_person_type');
         }
         if ($personType === ISupporter::PERSON_ORGANIZATION &&
             $settings->hasResolutionDate === InitiatorForm::CONTACT_REQUIRED &&
             empty($initiator['resolutionDate'])) {
-            $errors[] = 'No resolution date entered.';
+            $errors[] = \Yii::t('motion', 'err_no_resolution_date');
         }
         if ($personType === ISupporter::PERSON_NATURAL) {
             $validGenderValues = array_keys(static::getGenderSelection());
             if ($settings->contactGender === InitiatorForm::CONTACT_REQUIRED) {
                 if (!isset($initiator['gender']) || !in_array($initiator['gender'], $validGenderValues)) {
-                    $errors[] = 'Please enter a valid value in the field Gender';
+                    $errors[] = \Yii::t('motion', 'err_invalid_gender');
                 }
             }
             if ($settings->contactGender === InitiatorForm::CONTACT_OPTIONAL) {
                 $validGenderValues[] = '';
                 if (isset($initiator['gender']) && !in_array($initiator['gender'], $validGenderValues)) {
-                    $errors[] = 'Please enter a valid value in the field Gender';
+                    $errors[] = \Yii::t('motion', 'err_invalid_gender');
                 }
             }
         }
@@ -217,10 +217,10 @@ abstract class SupportBase
             $num        = count($supporters);
             if ($personType !== ISupporter::PERSON_ORGANIZATION) {
                 if ($num < $settings->minSupporters) {
-                    $errors[] = 'Not enough supporters.';
+                    $errors[] = \Yii::t('motion', 'err_not_enough_supporters');
                 }
                 if (!$settings->allowMoreSupporters && $num > $settings->minSupporters) {
-                    $errors[] = 'Too many supporters.';
+                    $errors[] = \Yii::t('motion', 'err_too_many_supporters');
                 }
             }
         }
@@ -350,7 +350,7 @@ abstract class SupportBase
         $othersPrivilege = User::havePrivilege($motionType->getConsultation(), Privileges::PRIVILEGE_MOTION_INITIATORS, null);
         $isForOther      = false;
         if ($othersPrivilege) {
-            $isForOther = (!User::getCurrentUser() || !$initiator || User::getCurrentUser()->id != $initiator->userId);
+            $isForOther = (!User::getCurrentUser() || User::getCurrentUser()->id != $initiator->userId);
         }
         return $view->render(
             '@app/views/shared/create_initiator',
@@ -364,6 +364,8 @@ abstract class SupportBase
                 'hasSupporters'     => $this->hasInitiatorGivenSupporters(),
                 'supporterFulltext' => $this->hasFullTextSupporterField(),
                 'adminMode'         => $this->adminMode,
+                'isAmendment'       => false,
+                'motionType'        => $motionType,
             ],
             $controller
         );
@@ -407,6 +409,8 @@ abstract class SupportBase
                 'hasSupporters'     => $this->hasInitiatorGivenSupporters(),
                 'supporterFulltext' => $this->hasFullTextSupporterField(),
                 'adminMode'         => $this->adminMode,
+                'isAmendment'       => true,
+                'motionType'        => $motionType,
             ],
             $controller
         );
@@ -424,7 +428,7 @@ abstract class SupportBase
         $othersPrivilege = User::havePrivilege($this->motionType->getConsultation(), Privileges::PRIVILEGE_MOTION_INITIATORS, PrivilegeQueryContext::motion($motion));
         $otherInitiator  = (isset($post['otherInitiator']) && $othersPrivilege);
 
-        if (RequestContext::getUser()->isGuest) {
+        if (RequestContext::getYiiUser()->isGuest) {
             $init               = new MotionSupporter();
             $init->dateCreation = date('Y-m-d H:i:s');
             $init->userId       = null;
@@ -536,7 +540,7 @@ abstract class SupportBase
         $othersPrivilege = User::havePrivilege($this->motionType->getConsultation(), Privileges::PRIVILEGE_MOTION_INITIATORS, PrivilegeQueryContext::amendment($amendment));
         $otherInitiator  = (isset($post['otherInitiator']) && $othersPrivilege);
 
-        if (RequestContext::getUser()->isGuest) {
+        if (RequestContext::getYiiUser()->isGuest) {
             $init               = new AmendmentSupporter();
             $init->dateCreation = date('Y-m-d H:i:s');
             $init->userId       = null;

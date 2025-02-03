@@ -3,10 +3,12 @@
 namespace app\controllers;
 
 use app\models\exceptions\{ApiResponseException, NotFound, Internal, ResponseException};
+use app\models\forms\LoginUsernamePasswordForm;
+use app\plugins\ModuleBase;
 use app\models\http\{HtmlResponse, RedirectResponse, ResponseInterface, RestApiExceptionResponse, RestApiResponse};
-use app\components\{ConsultationAccessPassword, HTMLTools, RequestContext, UrlHelper};
+use app\components\{ConsultationAccessPassword, RequestContext, SecondFactorAuthentication, UrlHelper};
 use app\models\settings\{AntragsgruenApp, Layout, Privileges};
-use app\models\db\{Amendment, Consultation, Motion, Site, User};
+use app\models\db\{Amendment, Consultation, Motion, repostory\MotionRepository, Site, User};
 use Yii;
 use yii\base\Module;
 use yii\helpers\Html;
@@ -25,6 +27,8 @@ class Base extends Controller
 
     /** @var null|bool - currently only null (default) and true (allow not-logged in, e.g. by plugins) are supported. false to come. */
     public ?bool $allowNotLoggedIn = null;
+
+    public bool $limitedAccessBecauseOfOverride = false;
 
     /**
      * @param string $cid the ID of this controller.
@@ -48,9 +52,17 @@ class Base extends Controller
      */
     public function beforeAction($action): bool
     {
-        Yii::$app->response->headers->add('X-Xss-Protection', '1');
-        Yii::$app->response->headers->add('X-Content-Type-Options', 'nosniff');
-        Yii::$app->response->headers->add('X-Frame-Options', 'sameorigin');
+        /** @var Response $response */
+        $response = Yii::$app->response;
+        $response->headers->add('X-Xss-Protection', '1');
+        $response->headers->add('X-Content-Type-Options', 'nosniff');
+        $response->headers->add('X-Frame-Options', 'sameorigin');
+
+        $usernamePasswordForm = new LoginUsernamePasswordForm(RequestContext::getSession(), User::getExternalAuthenticator());
+        $usernamePasswordForm->onPageView(get_class($this), $action->id);
+
+        $tfa = new SecondFactorAuthentication(RequestContext::getSession());
+        $tfa->onPageView(get_class($this), $action->id);
 
         if (!parent::beforeAction($action)) {
             return false;
@@ -66,39 +78,21 @@ class Base extends Controller
         $inManager = (get_class($this) === ManagerController::class);
         $inInstaller = (get_class($this) === InstallationController::class);
 
-        if ($appParams->siteSubdomain) {
-            if (str_starts_with($appParams->siteSubdomain, 'xn--')) {
-                HTMLTools::loadNetIdna2();
-                $idna = new \Net_IDNA2();
-                $subdomain = $idna->decode($appParams->siteSubdomain);
-            } else {
-                $subdomain = $appParams->siteSubdomain;
+        if ($appParams->siteSubdomain || isset($params[1]['subdomain'])) {
+            $subdomain = $appParams->siteSubdomain ?? $params[1]['subdomain'];
+            if (str_starts_with($subdomain, 'xn--')) {
+                $convertedSubdomain = idn_to_utf8($subdomain);
+                if ($convertedSubdomain === false) {
+                    $convertedSubdomain = '';
+                }
+                $subdomain = $convertedSubdomain;
             }
-
             $consultation = $params[1]['consultationPath'] ?? '';
             if ($consultation === '' && $this->isGetSet('passConId')) {
                 $consultation = $this->getHttpRequest()->get('passConId');
             }
             $this->loadConsultation($subdomain, $consultation);
-            if ($this->site) {
-                $this->layoutParams->setLayout($this->site->getSettings()->siteLayout);
-            } else {
-                $this->layoutParams->setLayout(Layout::getDefaultLayout());
-            }
-        } elseif (isset($params[1]['subdomain'])) {
-            if (str_starts_with($params[1]['subdomain'], 'xn--')) {
-                HTMLTools::loadNetIdna2();
-                $idna = new \Net_IDNA2();
-                $subdomain = $idna->decode($params[1]['subdomain']);
-            } else {
-                $subdomain = $params[1]['subdomain'];
-            }
 
-            $consultation = $params[1]['consultationPath'] ?? '';
-            if ($consultation === '' && $this->isGetSet('passConId')) {
-                $consultation = $this->getHttpRequest()->get('passConId');
-            }
-            $this->loadConsultation($subdomain, $consultation);
             if ($this->site) {
                 $this->layoutParams->setLayout($this->site->getSettings()->siteLayout);
             } else {
@@ -120,13 +114,15 @@ class Base extends Controller
             return true;
         }
 
-        if (get_class($this) === PagesController::class && in_array($action->id, ['show-page', 'css'])) {
+        if (get_class($this) === PagesController::class && in_array($action->id, [PagesController::VIEW_ID_SHOW_PAGE, PagesController::VIEW_ID_CSS])) {
             return true;
         }
-        if (get_class($this) === PagesController::class && $action->id === 'file' && $this->consultation) {
-            $logo = urldecode(basename($this->consultation->getSettings()->logoUrl));
-            if (isset($params[1]['filename']) && $logo && $params[1]['filename'] === $logo) {
-                return true;
+        if (get_class($this) === PagesController::class && $action->id === PagesController::VIEW_ID_FILES && $this->consultation) {
+            if ($this->consultation->getSettings()->logoUrl) {
+                $logo = urldecode(basename($this->consultation->getSettings()->logoUrl));
+                if (isset($params[1]['filename']) && $logo && $params[1]['filename'] === $logo) {
+                    return true;
+                }
             }
             if (isset($this->site->getSettings()->getStylesheet()->backgroundImage)) {
                 $bg = urldecode(basename($this->site->getSettings()->getStylesheet()->backgroundImage));
@@ -271,16 +267,17 @@ class Base extends Controller
 
     /**
      * @param string $view
-     * @param array $options
+     * @param array $params
      * @return string
      */
-    public function render($view, $options = array())
+    public function render($view, $params = array())
     {
         $params = array_merge(
             [
                 'consultation' => $this->consultation,
+                'reducedNavigation' => $this->limitedAccessBecauseOfOverride,
             ],
-            $options
+            $params
         );
         return parent::render($view, $params);
     }
@@ -305,14 +302,16 @@ class Base extends Controller
             }
         }
 
+        /** @var Response $response */
+        $response = Yii::$app->response;
         if ($this->site->getSettings()->apiCorsOrigins) {
             if (in_array('*', $this->site->getSettings()->apiCorsOrigins)) {
-                Yii::$app->response->headers->add('Access-Control-Allow-Origin', '*');
+                $response->headers->add('Access-Control-Allow-Origin', '*');
             } elseif ($this->getHttpRequest()->origin && in_array($this->getHttpRequest()->origin, $this->site->getSettings()->apiCorsOrigins)) {
-                Yii::$app->response->headers->add('Access-Control-Allow-Origin', $this->getHttpRequest()->origin);
+                $response->headers->add('Access-Control-Allow-Origin', $this->getHttpRequest()->origin);
             }
         }
-        Yii::$app->response->headers->add('Access-Control-Allow-Methods', implode(', ', $allowedMethods));
+        $response->headers->add('Access-Control-Allow-Methods', implode(', ', $allowedMethods));
 
         if ($this->getHttpMethod() === 'OPTIONS') {
             Yii::$app->end();
@@ -343,9 +342,7 @@ class Base extends Controller
             return false;
         }
 
-
-
-        if (get_class($this) === ConsultationController::class && $actionId === 'index') {
+        if (get_class($this) === ConsultationController::class && $actionId === ConsultationController::VIEW_ID_INDEX) {
             // On home, the actual error is shown on the regular page
             return false;
         }
@@ -369,14 +366,14 @@ class Base extends Controller
         if (!$this->consultation->getSettings()->forceLogin) {
             return false;
         }
-        if (RequestContext::getUser()->getIsGuest()) {
+        if (RequestContext::getYiiUser()->getIsGuest()) {
             $this->redirect(UrlHelper::createUrl(['/user/login', 'backUrl' => $_SERVER['REQUEST_URI']]));
             return true;
         }
         if ($this->consultation->getSettings()->managedUserAccounts) {
             $user = User::getCurrentUser();
             if (count($user->getUserGroupsForConsultation($this->consultation)) === 0 &&
-                !User::havePrivilege($this->consultation, Privileges::PRIVILEGE_SITE_ADMIN, null)) {
+                !$this->allowAccessToProtectedPage($user)) {
                 $this->redirect(UrlHelper::createUrl('/user/consultationaccesserror', $this->consultation));
                 return true;
             }
@@ -384,9 +381,28 @@ class Base extends Controller
         return false;
     }
 
+    private function allowAccessToProtectedPage(?User $user): bool
+    {
+        if (User::havePrivilege($this->consultation, Privileges::PRIVILEGE_SITE_ADMIN, null)) {
+            return true;
+        }
+
+        foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
+            /** @var ModuleBase $plugin */
+            $access = $plugin::canAccessConsultationAsUnprivilegedUser($user, $this->consultation, get_class($this), $this->action->id);
+            if ($access !== null) {
+                $this->limitedAccessBecauseOfOverride = $access;
+
+                return $access;
+            }
+        }
+
+        return false;
+    }
+
     public function testConsultationPwd(): bool
     {
-        if (!RequestContext::getUser()->getIsGuest()) {
+        if (!RequestContext::getYiiUser()->getIsGuest()) {
             return false;
         }
         if (!$this->consultation || !$this->consultation->getSettings()->accessPwd) {
@@ -409,7 +425,7 @@ class Base extends Controller
 
     public function forceLogin(): void
     {
-        if (RequestContext::getUser()->getIsGuest()) {
+        if (RequestContext::getYiiUser()->getIsGuest()) {
             $loginUrl = UrlHelper::createUrl(['/user/login', 'backUrl' => $this->getHttpRequest()->url]);
             $this->redirect($loginUrl);
             Yii::$app->end();
@@ -469,10 +485,13 @@ class Base extends Controller
 
     protected function showErrorpage(int $status, ?string $message): void
     {
+        /** @var Response $response */
+        $response = Yii::$app->response;
+
         $this->layoutParams->setFallbackLayoutIfNotInitializedYet();
         $this->layoutParams->robotsNoindex = true;
-        Yii::$app->response->statusCode    = $status;
-        Yii::$app->response->content       = $this->render(
+        $response->statusCode    = $status;
+        $response->content       = $this->render(
             '@app/views/errors/error',
             [
                 'httpStatus' => $status,
@@ -532,7 +551,7 @@ class Base extends Controller
     private function getConsultationUrlFromBackLink(string $backLink): string
     {
         preg_match('/\/(?<con>[\w_-]+)(\/.*)?$/siu', $this->getRequestValue('backUrl'), $matches);
-        if (!isset($matches['con']) || $matches['con'] === '') {
+        if (!isset($matches['con'])) {
             return '';
         }
         $consultation = Consultation::findOne(['urlPath' => $matches['con'], 'siteId' => $this->site->id]);
@@ -551,9 +570,10 @@ class Base extends Controller
     {
         if (is_null($this->site)) {
             $this->site = Site::findOne(['subdomain' => $subdomain]);
+            UrlHelper::setCurrentSite($this->site);
         }
 
-        if ($this instanceof ConsultationController && $this->action->id === 'home') {
+        if ($this instanceof ConsultationController && $this->action->id === ConsultationController::VIEW_ID_HOME) {
             foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
                 if ($plugin::hasSiteHomePage()) {
                     return null;
@@ -565,7 +585,7 @@ class Base extends Controller
             $this->consultationNotFound();
         }
 
-        if ($consultationId === '' && $this instanceof UserController && $this->action->id === 'login' && $this->getRequestValue('backUrl')) {
+        if ($consultationId === '' && $this instanceof UserController && $this->action->id === UserController::VIEW_ID_LOGIN_LOGIN && $this->getRequestValue('backUrl')) {
             $consultationId = $this->getConsultationUrlFromBackLink($this->getRequestValue('backUrl'));
         }
         if ($consultationId === '') {
@@ -588,7 +608,6 @@ class Base extends Controller
         }
 
         UrlHelper::setCurrentConsultation($this->consultation);
-        UrlHelper::setCurrentSite($this->site);
 
         $this->layoutParams->setConsultation($this->consultation);
 
@@ -622,19 +641,8 @@ class Base extends Controller
 
     protected function getMotionWithCheck(string $motionSlug, bool $throwExceptions = false): ?Motion
     {
-        if (is_numeric($motionSlug) && $motionSlug > 0) {
-            $motion = Motion::findOne([
-                'consultationId' => $this->consultation->id,
-                'id'             => $motionSlug,
-                'slug'           => null
-            ]);
-        } else {
-            $motion = Motion::findOne([
-                'consultationId' => $this->consultation->id,
-                'slug'           => $motionSlug
-            ]);
-        }
-        /** @var Motion|null $motion */
+        $motion = MotionRepository::getMotionByIdOrSlug($this->consultation, $motionSlug);
+
         if (!$motion) {
             if ($throwExceptions) {
                 throw new NotFound('Motion not found', 404);
@@ -656,14 +664,7 @@ class Base extends Controller
         return $motion;
     }
 
-    /**
-     * @param string $motionSlug
-     * @param int $amendmentId
-     * @param null|string $redirectView
-     * @param bool $throwExceptions
-     * @return Amendment|null
-     */
-    protected function getAmendmentWithCheck($motionSlug, $amendmentId, $redirectView = null, bool $throwExceptions = false): ?Amendment
+    protected function getAmendmentWithCheck(string $motionSlug, int $amendmentId, ?string $redirectView = null, bool $throwExceptions = false): ?Amendment
     {
         $motion    = $this->consultation->getMotion($motionSlug);
         $amendment = $this->consultation->getAmendment($amendmentId);

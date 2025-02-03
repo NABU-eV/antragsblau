@@ -8,6 +8,7 @@ use Tests\_pages\AdminIndexPage;
 use Tests\_pages\AdminMotionListPage;
 use Tests\_pages\AmendmentPage;
 use Tests\_pages\ConsultationHomePage;
+use Tests\_pages\ContentPage;
 use Tests\_pages\MotionCreatePage;
 use Tests\_pages\MotionPage;
 use Tests\Support\Helper\BasePage;
@@ -43,9 +44,9 @@ class AcceptanceTester extends Actor
     public const FIRST_FREE_CONSULTATION_ID        = 11;
     public const FIRST_FREE_VOTING_BLOCK_ID        = 3;
     public const FIRST_FREE_CONTENT_ID             = 4;
-    public const FIRST_FREE_USER_ID                = 9;
+    public const FIRST_FREE_USER_ID                = 10;
     public const FIRST_FREE_TAG_ID                 = 14;
-    public const FIRST_FREE_USERGROUP_ID           = 39;
+    public const FIRST_FREE_USERGROUP_ID           = 40;
 
     public const ABSOLUTE_URL_DOMAIN = 'test.antragsgruen.test';
     public const ABSOLUTE_URL_TEMPLATE_SITE = 'http://test.antragsgruen.test/{SUBDOMAIN}/{PATH}';
@@ -126,6 +127,20 @@ class AcceptanceTester extends Actor
         return $page;
     }
 
+    public function gotoContentPage(string $pageSlug, string $subdomain = 'stdparteitag', string $path = 'std-parteitag'): ContentPage
+    {
+        $page = ContentPage::openBy(
+            $this,
+            [
+                'subdomain'        => $subdomain,
+                'consultationPath' => $path,
+                'pageSlug'         => $pageSlug,
+            ]
+        );
+        $this->wait(0.1);
+        return $page;
+    }
+
     public function openPage(BasePage|string $page, array $params = []): BasePage
     {
         return $page::openBy($this, $params);
@@ -189,6 +204,11 @@ class AcceptanceTester extends Actor
     public function loginAsProposalAdmin(): self
     {
         return $this->loginWithData('proposaladmin@example.org', 'proposaladmin');
+    }
+
+    public function loginAsProgressAdmin(): self
+    {
+        return $this->loginWithData('progress@example.org', 'proposaladmin');
     }
 
     public function loginAsGlobalAdmin(): self

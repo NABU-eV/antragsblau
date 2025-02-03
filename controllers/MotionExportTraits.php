@@ -2,8 +2,10 @@
 
 namespace app\controllers;
 
+use app\models\forms\AdminMotionFilterForm;
+use app\views\pdfLayouts\IPDFLayout;
 use app\models\settings\{PrivilegeQueryContext, Privileges, AntragsgruenApp};
-use app\components\{RequestContext, Tools, UrlHelper};
+use app\components\{IMotionStatusFilter, RequestContext, Tools, UrlHelper};
 use app\models\exceptions\NotFound;
 use app\models\http\{BinaryFileResponse,
     HtmlErrorResponse,
@@ -97,14 +99,18 @@ trait MotionExportTraits
             return new HtmlResponse($this->render('view_not_visible', ['motion' => $motion, 'adminEdit' => false]));
         }
 
+        $selectedPdfLayout = IPDFLayout::getPdfLayoutForMotionType($motion->getMyMotionType());
+
         $hasLaTeX = (AntragsgruenApp::getInstance()->xelatexPath || AntragsgruenApp::getInstance()->lualatexPath);
-        if (!($hasLaTeX && $motion->getMyMotionType()->texTemplateId) && !$motion->getMyMotionType()->getPDFLayoutClass()) {
+        if (!($hasLaTeX && $selectedPdfLayout->latexId !== null) && $selectedPdfLayout->id === null) {
             return new HtmlErrorResponse(404, \Yii::t('motion', 'err_no_pdf'));
         }
 
         if ($motion->getAlternativePdfSection()) {
             $pdfData = $motion->getAlternativePdfSection()->getData();
-        } elseif ($hasLaTeX && $motion->getMyMotionType()->texTemplateId) {
+        } elseif ($selectedPdfLayout->isHtmlToPdfLayout()) {
+            $pdfData = LayoutHelper::createPdfFromHtml($motion);
+        } elseif ($selectedPdfLayout->latexId !== null) {
             $pdfData = LayoutHelper::createPdfLatex($motion);
         } else {
             $pdfData = LayoutHelper::createPdfTcpdf($motion);
@@ -129,17 +135,22 @@ trait MotionExportTraits
 
         $amendments = $motion->getVisibleAmendmentsSorted();
 
+        $selectedPdfLayout = IPDFLayout::getPdfLayoutForMotionType($motion->getMyMotionType());
         $hasLaTeX = (AntragsgruenApp::getInstance()->xelatexPath || AntragsgruenApp::getInstance()->lualatexPath);
-        if (!($hasLaTeX && $motion->getMyMotionType()->texTemplateId) && !$motion->getMyMotionType()->getPDFLayoutClass()) {
+        if (!($hasLaTeX && $selectedPdfLayout->latexId !== null) && $selectedPdfLayout->id === null) {
             return new HtmlErrorResponse(404, \Yii::t('motion', 'err_no_pdf'));
         }
 
-        if ($hasLaTeX && $motion->getMyMotionType()->texTemplateId) {
+        if ($selectedPdfLayout->isHtmlToPdfLayout()) {
+            $pdfData = $this->renderPartial('pdf_amend_collection_html2pdf', [
+                'motion' => $motion, 'amendments' => $amendments
+            ]);
+        } elseif ($selectedPdfLayout->latexId !== null) {
             $pdfData = $this->renderPartial('pdf_amend_collection_tex', [
                 'motion' => $motion, 'amendments' => $amendments, 'texTemplate' => $motion->motionType->texTemplate
             ]);
         } else {
-            $pdfData =$this->renderPartial('pdf_amend_collection_tcpdf', [
+            $pdfData = $this->renderPartial('pdf_amend_collection_tcpdf', [
                 'motion' => $motion, 'amendments' => $amendments
             ]);
         }
@@ -153,11 +164,18 @@ trait MotionExportTraits
         );
     }
 
-    private function getMotionsAndTemplate(string $motionTypeId, bool $withdrawn, bool $resolutions): array
+    private function getMotionsAndTemplate(string $motionTypeId, bool $inactive, bool $resolutions): array
     {
         /** @var TexTemplate $texTemplate */
         $texTemplate = null;
-        $imotions = $this->consultation->getVisibleIMotionsSorted($withdrawn);
+
+        $search = AdminMotionFilterForm::getForConsultationFromRequest(
+            $this->consultation,
+            $this->consultation->motions,
+            $this->getRequestValue('Search')
+        );
+        $imotions = $search->getMotionsForExport($this->consultation, (int) $motionTypeId, $inactive);
+
         if ($motionTypeId !== '' && $motionTypeId !== '0') {
             $motionTypeIds = explode(',', $motionTypeId);
             $imotions       = array_filter($imotions, function (IMotion $motion) use ($motionTypeIds) {
@@ -187,13 +205,10 @@ trait MotionExportTraits
         return [$imotionsFiltered, $texTemplate];
     }
 
-    public function actionFullpdf(string $motionTypeId = '', int $withdrawn = 0, int $resolutions = 0): ResponseInterface
+    public function actionFullpdf(string $motionTypeId = '', int $inactive = 0, int $resolutions = 0): ResponseInterface
     {
-        $withdrawn = ($withdrawn === 1);
-        $resolutions = ($resolutions === 1);
-
         try {
-            list($imotions, $texTemplate) = $this->getMotionsAndTemplate($motionTypeId, $withdrawn, $resolutions);
+            list($imotions, $texTemplate) = $this->getMotionsAndTemplate($motionTypeId, ($inactive === 1), ($resolutions === 1));
             /** @var IMotion[] $imotions */
             if (count($imotions) === 0) {
                 return new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet'));
@@ -203,12 +218,15 @@ trait MotionExportTraits
             return new HtmlErrorResponse(404, $e->getMessage());
         }
 
+        $selectedPdfLayout = IPDFLayout::getPdfLayoutForMotionType($imotions[0]->getMyMotionType());
         $hasLaTeX = (AntragsgruenApp::getInstance()->xelatexPath || AntragsgruenApp::getInstance()->lualatexPath);
-        if (!($hasLaTeX && $texTemplate) && !$imotions[0]->getMyMotionType()->getPDFLayoutClass()) {
+        if (!($hasLaTeX && $selectedPdfLayout->latexId !== null) && $selectedPdfLayout->id === null) {
             return new HtmlErrorResponse(404, \Yii::t('motion', 'err_no_pdf'));
         }
 
-        if ($hasLaTeX && $texTemplate) {
+        if ($selectedPdfLayout->isHtmlToPdfLayout()) {
+            $pdfData = $this->renderPartial('pdf_full_html2pdf', ['imotions' => $imotions]);
+        } elseif ($selectedPdfLayout->latexId !== null) {
             $pdfData = $this->renderPartial('pdf_full_tex', ['imotions' => $imotions, 'texTemplate' => $texTemplate]);
         } else {
             $pdfData = $this->renderPartial('pdf_full_tcpdf', ['imotions' => $imotions]);
@@ -223,13 +241,10 @@ trait MotionExportTraits
         );
     }
 
-    public function actionPdfcollection(string $motionTypeId = '', int $withdrawn = 0, int $resolutions = 0): ResponseInterface
+    public function actionPdfcollection(string $motionTypeId = '', int $inactive = 0, int $resolutions = 0): ResponseInterface
     {
-        $withdrawn = ($withdrawn === 1);
-        $resolutions = ($resolutions === 1);
-
         try {
-            list($imotions, $texTemplate) = $this->getMotionsAndTemplate($motionTypeId, $withdrawn, $resolutions);
+            list($imotions, $texTemplate) = $this->getMotionsAndTemplate($motionTypeId, ($inactive === 1), ($resolutions === 1));
             if (count($imotions) === 0) {
                 return new HtmlErrorResponse(404, \Yii::t('motion', 'none_yet'));
             }
@@ -239,7 +254,8 @@ trait MotionExportTraits
                 $imotions = [];
                 foreach ($motionType->motions as $motion) {
                     if (is_a($motion, Motion::class)) {
-                        $imotions = array_merge($imotions, $motion->getVisibleAmendmentsSorted($withdrawn));
+                        $filter = IMotionStatusFilter::adminExport($this->consultation, ($inactive === 1));
+                        $imotions = array_merge($imotions, $motion->getFilteredAndSortedAmendments($filter));
                     }
                 }
                 if (count($imotions) === 0) {
@@ -250,12 +266,16 @@ trait MotionExportTraits
             return new HtmlErrorResponse(404, $e->getMessage());
         }
 
+        $selectedPdfLayout = IPDFLayout::getPdfLayoutForMotionType($motionType);
+
         $hasLaTeX = (AntragsgruenApp::getInstance()->xelatexPath || AntragsgruenApp::getInstance()->lualatexPath);
-        if (!($hasLaTeX && $texTemplate) && !$motionType->getPDFLayoutClass()) {
+        if (!($hasLaTeX && $selectedPdfLayout->latexId !== null) && $selectedPdfLayout->id === null) {
             return new HtmlErrorResponse(404, \Yii::t('motion', 'err_no_pdf'));
         }
 
-        if ($hasLaTeX && $texTemplate) {
+        if ($selectedPdfLayout->isHtmlToPdfLayout()) {
+            $pdfData = $this->renderPartial('pdf_collection_html2pdf', ['imotions' => $imotions]);
+        } elseif ($selectedPdfLayout->latexId !== null) {
             $pdfData = $this->renderPartial('pdf_collection_tex', ['imotions' => $imotions, 'texTemplate' => $texTemplate]);
         } else {
             $pdfData = $this->renderPartial('pdf_collection_tcpdf', ['imotions' => $imotions]);
