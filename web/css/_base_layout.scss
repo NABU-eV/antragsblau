@@ -10,10 +10,10 @@
   position: absolute;
   left: 10px;
   top: 35px;
+  @include outlineOnFocusNoBorder();
   &:link, &:visited {
     color: transparent;
   }
-  @include outlineOnFocusNoBorder();
   &:focus {
     color: $colorLinks;
   }
@@ -202,9 +202,8 @@ body > footer {
   }
 }
 
-.toolbarBelowTitle {
+.toolbarBelowTitle, .toolbarAtBottom {
   padding: 10px 19px;
-  border-bottom: solid 1px #aaa;
   background: #f7f7f7;
   display: table;
   margin-left: -1px;
@@ -212,6 +211,25 @@ body > footer {
   width: calc(100% + 2px);
   > * {
     display: table-cell;
+  }
+}
+.toolbarBelowTitle {
+  border-bottom: solid 1px #aaa;
+}
+.toolbarAtBottom {
+  border-top: solid 1px #aaa;
+
+}
+
+.motionPrevNextLinks {
+  padding: 5px 10px;
+  .prev {
+    width: 50%;
+    text-align: left;
+  }
+  .next {
+    width: 50%;
+    text-align: right;
   }
 }
 

@@ -351,13 +351,13 @@
     margin-top: -1px;
     width: 100vw;
     max-width: $content-max-width;
-    z-index: -1; // Line number highlighting should be behind the text
+    z-index: 0;
     background-color: rgba(255, 255, 0, 0);
     transition: background-color 0.5s ease;
   }
 
   .lineNumber.highlighted-active:before {
-    background-color: rgba(255, 255, 0, 1);
+    background-color: rgba(255, 255, 0, 0.3);
   }
 
   &.smallFont {
@@ -367,11 +367,19 @@
 
 .motionTextHolder {
   .well & {
+    padding-bottom: 22px;
     > h3.green {
       margin-bottom: 22px;
     }
+  }
 
-    padding-bottom: 22px;
+  .stdPadding {
+    @media screen and (min-width: $screenMinWith) {
+      padding: 15px 10px 15px $fixedWidthTextStdPadding;
+    }
+    @media (max-width: $screenMinWith - 1) {
+      padding: 15px 10px 15px $fixedWidthTextStdPaddingSmall;
+    }
   }
 
   .amendmentTextModeSelector {
@@ -425,10 +433,10 @@
   }
 
   .textAmendment {
+    position: relative;
     @media (min-width: $screenMinWith) {
       width: $motionFixedWidth;
     }
-    position: relative;
 
     del, ul.deleted, ol.deleted, li.deleted, blockquote.deleted, pre.deleted {
       color: #ff0000;
@@ -506,13 +514,13 @@
 
   .onlyOneSupporter {
     list-style-type: none;
+    margin: 0;
     @media screen and (min-width: $screenMinWith) {
       padding: 15px 10px 15px $fixedWidthTextStdPadding;
     }
     @media (max-width: $screenMinWith - 1) {
       padding: 15px 10px 15px $fixedWidthTextStdPaddingSmall;
     }
-    margin: 0;
     > li {
       padding: 0;
       margin: 0;
@@ -661,6 +669,7 @@
   background: $commentBackground;
   border-radius: 3px;
   margin: 15px 20px 30px;
+  padding: $commentPadding;
 
   &.replyComment {
     margin-top: -15px;
@@ -675,14 +684,11 @@
     line-height: 18px;
     margin: 0;
     text-transform: none;
-    padding: $commentPadding;
   }
 
   .commentName {
     @media (min-width: $screenMinWith) {
       float: right;
-      padding-top: $commentPadding;
-      padding-right: $commentPadding;
     }
   }
 
@@ -691,24 +697,16 @@
     font-size: 1.2em;
   }
 
-  .commentText {
-    padding: 0 $commentPadding $commentPadding $commentPadding;
-  }
-
-  .commentFullTextarea {
-    padding: 0 $commentPadding $commentPadding $commentPadding;
-  }
-
   .date {
     color: #757676;
     float: right;
-    padding: $commentPadding;
     margin-left: 20px;
   }
 
   .commentBottom {
     height: 23px;
     position: relative;
+    margin: $commentPadding calc(-1 * $commentPadding) calc(-1 * $commentPadding) calc(-1 * $commentPadding);
 
     .entry {
       position: absolute;
@@ -803,7 +801,7 @@
   }
 
   .submitrow {
-    padding: $commentPadding;
+    padding-top: $commentPadding;
     text-align: center;
   }
 }
@@ -893,6 +891,45 @@ iframe.pdfViewer {
     width: 100%;
     position: absolute;
     border: none;
+  }
+}
+
+.sectionType8 { // Editorials / Progress reports
+  .editCaller {
+    float: right;
+    font-weight: normal;
+  }
+  .textHolder {
+    clear: both;
+  }
+  .toolbarBelowTitle {
+    margin-top: -22px; // Cancel margin from header
+  }
+  .editorialHeader {
+    padding-top: 5px;
+    padding-bottom: 5px;
+    height: 47px;
+    overflow: auto;
+  }
+  .metadataView {
+    vertical-align: middle;
+    font-style: italic;
+  }
+  .metadataEdit {
+    display: flex;
+    width: 100%;
+    label > * {
+      display: inline-block;
+      width: auto;
+    }
+    label {
+      margin: 0;
+      flex-grow: 1;
+      font-weight: normal;
+    }
+    label:last-child {
+      text-align: right;
+    }
   }
 }
 

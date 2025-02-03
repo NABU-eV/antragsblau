@@ -38,7 +38,7 @@ class InstallationController extends Base
         if (!version_compare(PHP_VERSION, ANTRAGSGRUEN_MIN_PHP_VERSION, '>=')) {
             $phpVersionWarning = str_replace(
                 ['%MIN_VERSION%', '%CURR_VERSION%'],
-                [ANTRAGSGRUEN_MIN_PHP_VERSION, phpversion()],
+                [ANTRAGSGRUEN_MIN_PHP_VERSION, PHP_VERSION],
                 \Yii::t('manager', 'err_php_version')
             );
         } else {
@@ -71,7 +71,7 @@ class InstallationController extends Base
                 $admin = User::findOne($siteForm->readConfigFromFile()->adminUserIds[0]);
                 $siteForm->create($admin);
 
-                RequestContext::getUser()->login($admin, $this->getParams()->autoLoginDuration);
+                RequestContext::getYiiUser()->login($admin, $this->getParams()->autoLoginDuration);
 
                 $consultationUrl = UrlHelper::createUrl('consultation/index');
                 $consultationUrl = UrlHelper::absolutizeLink($consultationUrl);
@@ -116,7 +116,7 @@ class InstallationController extends Base
             $editable = is_writable($configFile);
             if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
                 $myUsername = posix_getpwuid(posix_geteuid());
-                if (!$myUsername || !isset($myUsername['name'])) {
+                if (!$myUsername) {
                     return new HtmlErrorResponse(500, 'Could not determine username');
                 }
                 $makeEditabeCommand = 'sudo chown ' . $myUsername['name'] . ' ' . $configFile . "\n";
@@ -128,7 +128,7 @@ class InstallationController extends Base
             $editable = is_writable($configDir);
             if (function_exists('posix_getpwuid') && function_exists('posix_geteuid')) {
                 $myUsername = posix_getpwuid(posix_geteuid());
-                if (!$myUsername || !isset($myUsername['name'])) {
+                if (!$myUsername) {
                     return new HtmlErrorResponse(500, 'Could not determine username');
                 }
                 $makeEditabeCommand = 'sudo chown ' . $myUsername['name'] . ' ' . $configDir . "\n";

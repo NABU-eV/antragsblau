@@ -2,10 +2,12 @@
 
 namespace app\models\forms;
 
+use app\components\HTMLTools;
 use app\components\RequestContext;
 use app\models\settings\{PrivilegeQueryContext, Privileges};
 use app\models\db\{ConsultationAgendaItem,
     ConsultationMotionType,
+    ConsultationSettingsMotionSection,
     ConsultationSettingsTag,
     Motion,
     MotionSection,
@@ -59,14 +61,7 @@ class MotionEditForm
             if (isset($motionSections[$sectionType->id])) {
                 $this->sections[] = $motionSections[$sectionType->id];
             } else {
-                $section = new MotionSection();
-                $section->sectionId = $sectionType->id;
-                $section->setData('');
-                $section->dataRaw  = '';
-                $section->public = $sectionType->getSettingsObj()->public;
-                $section->cache = '';
-                $section->refresh();
-                $this->sections[] = $section;
+                $this->sections[] = MotionSection::createEmpty($sectionType->id, $sectionType->getSettingsObj()->public);
             }
         }
     }
@@ -133,14 +128,14 @@ class MotionEditForm
                 $section->getSectionType()->setMotionData($values['motion']['title']);
             }
             if (isset($values['sectionDelete']) && isset($values['sectionDelete'][$section->sectionId])) {
-                if (!$section->getSettings()->required) {
+                if ($section->getSettings()->required !== ConsultationSettingsMotionSection::REQUIRED_YES) {
                     $section->getSectionType()->deleteMotionData();
                 }
             }
             if (isset($values['sections'][$section->sectionId])) {
                 $section->getSectionType()->setMotionData($values['sections'][$section->sectionId]);
             }
-            if (isset($files['sections']) && isset($files['sections']['tmp_name'])) {
+            if (isset($files['sections']['tmp_name'])) {
                 if (!empty($files['sections']['tmp_name'][$section->sectionId])) {
                     $data = [];
                     foreach ($files['sections'] as $key => $vals) {
@@ -173,7 +168,7 @@ class MotionEditForm
 
         foreach ($this->sections as $section) {
             $type = $section->getSettings();
-            if ($section->getData() === '' && $type->required) {
+            if ($section->getData() === '' && $type->required === ConsultationSettingsMotionSection::REQUIRED_YES) {
                 $errors[] = str_replace('%FIELD%', $type->title, \Yii::t('base', 'err_no_data_given'));
             }
             if (!$section->checkLength()) {
@@ -201,6 +196,11 @@ class MotionEditForm
      */
     public function updateTextRewritingAmendments(Motion $motion, array $newHtmls, array $overrides = []): bool
     {
+        foreach ($motion->getActiveSections(ISectionType::TYPE_TEXT_SIMPLE) as $section) {
+            $forbiddenFormattings = $section->getSettings()->getForbiddenMotionFormattings();
+            $newHtmls[$section->sectionId] = HTMLTools::cleanSimpleHtml($newHtmls[$section->sectionId], $forbiddenFormattings);
+        }
+
         foreach ($motion->getAmendmentsRelevantForCollisionDetection() as $amendment) {
             foreach ($amendment->getActiveSections(ISectionType::TYPE_TEXT_SIMPLE) as $section) {
                 if (isset($overrides[$amendment->id]) && isset($overrides[$amendment->id][$section->sectionId])) {
@@ -311,7 +311,7 @@ class MotionEditForm
                 // Updating the text is done separately, including amendment rewriting
                 continue;
             }
-            if ($section->getData() === '' && $type->required) {
+            if ($section->getData() === '' && $type->required === ConsultationSettingsMotionSection::REQUIRED_YES) {
                 $errors[] = str_replace('%FIELD%', $type->title, \Yii::t('base', 'err_no_data_given'));
             }
             if (!$section->checkLength()) {

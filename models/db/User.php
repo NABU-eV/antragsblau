@@ -26,7 +26,8 @@ use yii\web\IdentityInterface;
  * @property string|null $dateLastLogin
  * @property int $status
  * @property string|null $pwdEnc
- * @property string|null $authKey
+ * @property string $authKey
+ * @property string|null $secretKey
  * @property string|null $recoveryToken
  * @property string|null $recoveryAt
  * @property string|null $emailChange
@@ -55,6 +56,7 @@ class User extends ActiveRecord implements IdentityInterface
     // Hint: compared binary, i.e. values are 1, 2, 4, ...
     public const FIXED_NAME = 1; // When submitting as a natural person, this fixes name + orga of the person
     public const FIXED_ORGA = 2; // Only affects when submitting as the organization
+    public const FIXED_EMAIL = 4;
 
     public const AUTH_EMAIL = 'email';
 
@@ -70,21 +72,9 @@ class User extends ActiveRecord implements IdentityInterface
         ];
     }
 
-
     public static function getCurrentUser(): ?User
     {
-        try {
-            if (RequestContext::getUser()->getIsGuest()) {
-                return null;
-            } else {
-                /** @var User $user */
-                $user = RequestContext::getUser()->identity;
-                return $user;
-            }
-        } /** @noinspection PhpRedundantCatchClauseInspection */ catch (\yii\base\UnknownPropertyException $e) {
-            // Can happen with console commands
-            return null;
-        }
+        return RequestContext::getDbUser();
     }
 
     private static array $userCache = [];
@@ -323,7 +313,6 @@ class User extends ActiveRecord implements IdentityInterface
      * @return IdentityInterface the identity object that matches the given token.
      * Null should be returned if such an identity cannot be found
      * or the identity is not in an active state (disabled, deleted, etc.)
-     * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
     public static function findIdentityByAccessToken($token, $type = null)
     {
@@ -378,6 +367,7 @@ class User extends ActiveRecord implements IdentityInterface
         if (parent::beforeSave($insert)) {
             if ($this->isNewRecord) {
                 $this->authKey      = \Yii::$app->getSecurity()->generateRandomString();
+                $this->secretKey    = \Yii::$app->getSecurity()->generateRandomString();
                 $this->dateCreation = new Expression("NOW()");
             }
             return true;
@@ -401,6 +391,23 @@ class User extends ActiveRecord implements IdentityInterface
         $this->settings = json_encode($settings, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
     }
 
+    private function getSecretKey(): string
+    {
+        if (!$this->secretKey) {
+            // for older accounts, this property was not generated during account creation, so we generate it on demand here.
+            $this->secretKey = \Yii::$app->getSecurity()->generateRandomString(32);
+            $this->save();
+        }
+        return $this->secretKey;
+    }
+
+    private function createConfirmationCode(string $base): string
+    {
+        $key = $base . $this->getSecretKey() . AntragsgruenApp::getInstance()->randomSeed;
+
+        return substr(base64_encode(sha1($key, true)), 0, 16);
+    }
+
     /**
      * @throws \Yii\base\Exception
      */
@@ -415,11 +422,11 @@ class User extends ActiveRecord implements IdentityInterface
             return 'testCode';
         }
 
-        if ($date == '') {
+        if ($date === '') {
             $date = date('Ymd');
         }
-        $binaryCode = md5($this->id . $date . AntragsgruenApp::getInstance()->randomSeed, true);
-        return substr(base64_encode($binaryCode), 0, 10);
+
+        return $this->createConfirmationCode($this->email . $date);
     }
 
     public function checkEmailConfirmationCode(string $code): bool
@@ -488,6 +495,11 @@ class User extends ActiveRecord implements IdentityInterface
         return ($authParts[0] === self::AUTH_EMAIL);
     }
 
+    public function supportsSecondFactorAuth(): bool
+    {
+        return $this->isEmailAuthUser() && !$this->getSettingsObj()->preventPasswordChange;
+    }
+
     /**
      * @return ConsultationUserGroup[]|null
      */
@@ -503,7 +515,14 @@ class User extends ActiveRecord implements IdentityInterface
 
     public function validatePassword(string $password): bool
     {
-        return password_verify($password, $this->pwdEnc);
+        $correctPassword = password_verify($password, $this->pwdEnc);
+
+        if ($correctPassword && password_needs_rehash($this->pwdEnc, PASSWORD_DEFAULT)) {
+            $this->pwdEnc = password_hash($password, PASSWORD_DEFAULT);
+            $this->save();
+        }
+
+        return $correctPassword;
     }
 
     public function changePassword(string $newPassword): void
@@ -571,16 +590,14 @@ class User extends ActiveRecord implements IdentityInterface
         return $supporters;
     }
 
-
     public function getNotificationUnsubscribeCode(): string
     {
-        return $this->id . '-' . substr(md5($this->id . 'unsubscribe' . AntragsgruenApp::getInstance()->randomSeed), 0, 8);
+        return $this->id . '-' . $this->createConfirmationCode('unsubscribe');
     }
 
     public static function getUserByUnsubscribeCode(string $code): ?User
     {
         $parts = explode('-', $code);
-        /** @var User $user */
         $user = User::findOne($parts[0]);
         if (!$user) {
             return null;
@@ -703,6 +720,16 @@ class User extends ActiveRecord implements IdentityInterface
         }
     }
 
+    public function hasTooRecentRecoveryEmail(): bool
+    {
+        if (!$this->recoveryAt) {
+            return false;
+        }
+        $recTs = Tools::dateSql2timestamp($this->recoveryAt);
+
+        return ($recTs + 3600) > time();
+    }
+
     /**
      * @throws MailNotSent
      * @throws FormError
@@ -710,11 +737,8 @@ class User extends ActiveRecord implements IdentityInterface
      */
     public function sendRecoveryMail(): void
     {
-        if ($this->recoveryAt) {
-            $recTs = Tools::dateSql2timestamp($this->recoveryAt);
-            if (time() - $recTs < 24 * 3600) {
-                throw new FormError(\Yii::t('user', 'err_recover_mail_sent'));
-            }
+        if ($this->hasTooRecentRecoveryEmail()) {
+            throw new FormError(\Yii::t('user', 'err_recover_mail_sent'));
         }
         if ($this->email === null) {
             return;
@@ -729,9 +753,13 @@ class User extends ActiveRecord implements IdentityInterface
         $subject  = \Yii::t('user', 'recover_mail_title');
         $url      = UrlHelper::createUrl(['user/recovery', 'email' => $this->email, 'code' => $recoveryToken]);
         $url      = UrlHelper::absolutizeLink($url);
-        $text     = \Yii::t('user', 'recover_mail_body');
-        $replaces = ['%URL%' => $url, '%CODE%' => $recoveryToken];
-        MailTools::sendWithLog($type, null, $this->email, $this->id, $subject, $text, '', $replaces);
+        $text     = str_replace(
+            ['%NAME_GIVEN%', '%NAME_FAMILY%'],
+            [$this->getGivenNameWithFallback(), $this->getFamilyNameWithFallback()],
+            \Yii::t('user', 'recover_mail_body')
+        );
+        $noLogReplaces = ['%URL%' => $url, '%CODE%' => $recoveryToken];
+        MailTools::sendWithLog($type, null, $this->email, $this->id, $subject, $text, '', $noLogReplaces);
     }
 
     /**
@@ -759,8 +787,7 @@ class User extends ActiveRecord implements IdentityInterface
             return 'testCode';
         }
 
-        $key = $newEmail . $timestamp . $this->id . $this->authKey;
-        return substr(sha1($key), 0, 10);
+        return $this->createConfirmationCode($newEmail . $timestamp);
     }
 
     /**
@@ -850,18 +877,22 @@ class User extends ActiveRecord implements IdentityInterface
         return $selectableGroups;
     }
 
-    public function getUserAdminApiObject(?Consultation $consultation): array
+    public function getUserAdminApiObject(Consultation $consultation): array
     {
+        $settings = $this->getSettingsObj();
+
         $data = $this->getUserdataExportObject();
         $data['id'] = $this->id;
-        $data['selectable_groups'] = ($consultation ? $this->getSelectableUserGroups($consultation) : null);
+        $data['selectable_groups'] = $this->getSelectableUserGroups($consultation);
+        $data['vote_weight'] = $settings->getVoteWeight($consultation);
+        $data['has_2fa'] = $settings->secondFactorKeys !== null && count($settings->secondFactorKeys) > 0;
+        $data['force_2fa'] = $settings->enforceTwoFactorAuthentication;
+        $data['prevent_password_change'] = $settings->preventPasswordChange;
+        $data['force_password_change'] = $settings->forcePasswordChange;
 
-        $groups = $this->userGroups;
-        if ($consultation) {
-            $groups = array_values(array_filter($groups, function (ConsultationUserGroup $group) use ($consultation): bool {
-                return $group->isSpecificallyRelevantForConsultationOrSite($consultation);
-            }));
-        }
+        $groups = array_values(array_filter($this->userGroups, function (ConsultationUserGroup $group) use ($consultation): bool {
+            return $group->isSpecificallyRelevantForConsultationOrSite($consultation);
+        }));
         $data['groups'] = array_map(function (ConsultationUserGroup $group): int {
             return $group->id;
         }, $groups);
@@ -906,6 +937,7 @@ class User extends ActiveRecord implements IdentityInterface
         $this->status          = static::STATUS_DELETED;
         $this->pwdEnc          = null;
         $this->authKey         = '';
+        $this->secretKey       = null;
         $this->recoveryToken   = null;
         $this->recoveryAt      = null;
         $this->save(false);

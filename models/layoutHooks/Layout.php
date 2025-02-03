@@ -19,6 +19,12 @@ class Layout
 
     public static function addHook(Hooks $hook): void
     {
+        // StdHooks is added by default; if another set of hooks is added that extends from StdHooks, remove it to prevent methods running twice
+        $class = get_class($hook);
+        while ($class = get_parent_class($class)) {
+            self::$hooks = array_values(array_filter(self::$hooks, fn(Hooks $searchHook) => get_class($searchHook) !== $class));
+        }
+
         if (!in_array($hook, self::$hooks)) {
             self::$hooks[] = $hook;
         }
@@ -58,6 +64,11 @@ class Layout
     public static function logoRow(): string
     {
         return self::callHook('logoRow');
+    }
+
+    public static function squareLogoPath(): ?string
+    {
+        return self::callHook('squareLogoPath', [], null);
     }
 
     public static function beforeContent(): string
@@ -144,9 +155,19 @@ class Layout
         return self::callHook('getMotionViewData', [$motion], $motionData);
     }
 
+    public static function getMotionExportData(array $motionData, Motion $motion): array
+    {
+        return self::callHook('getMotionExportData', [$motion], $motionData);
+    }
+
     public static function getAmendmentViewData(array $amendmentData, Amendment $amendment): array
     {
         return self::callHook('getAmendmentViewData', [$amendment], $amendmentData);
+    }
+
+    public static function getAmendmentExportData(array $amendmentData, Amendment $amendment): array
+    {
+        return self::callHook('getAmendmentExportData', [$amendment], $amendmentData);
     }
 
     public static function getAmendmentBookmarkName(Amendment $amendment): string
@@ -162,6 +183,11 @@ class Layout
     public static function getConsultationPreWelcome(): string
     {
         return self::callHook('getConsultationPreWelcome', [], '');
+    }
+
+    public static function getConsultationWelcomeReplacer(): ?string
+    {
+        return self::callHook('getConsultationWelcomeReplacer', [], null);
     }
 
     public static function getFormattedMotionStatus(string $origStatus, Motion $motion): string

@@ -1,17 +1,18 @@
 Antragsgrün
 ===========
 
-Antragsgrün offers a clear and efficient tool for the effective administration of motions, amendments and candidacies: from submission to administration and print template.
+Antragsgrün is an easy-to-use online tool for NGOs, political parties, and social initiatives to collaboratively discuss resolutions, party platforms, and amendments. It helps to manage candidacies and supports meetings by providing online votings, speaking lists, and many more features.
 
 A number of organisations are using the tool successfully such as the federal association of the European and German Green Party, the German Federal Youth Council, the European Youth Forum or the National Council of German Women's Organizations.
 It can be easily adapted to a variety of scenarios.
 
 Core functions:
 - Submit motions, proposals and discussion papers online
-- Clear amendment
-- Submitted amendments are displayed directly in the relevant text section.
+- Clear amendming process for users and administrators
 - Discuss motions
-- Sophisticated administration tools
+- Draft resolutions
+- Votings
+- Speaking lists
 - Diverse export options
 - Great flexibility - it adapts to a lot of different use cases
 - Technically mature, data privacy-friendly
@@ -22,7 +23,7 @@ Using the hosted version / testing it
 
 - German: [https://antragsgruen.de](https://antragsgruen.de/)
 - English: [https://motion.tools](https://motion.tools/), [https://discuss.green](https://discuss.green/)
-- French: [https://discuss.green](https://discuss.green/)
+- French, Dutch, Catalan: [https://discuss.green](https://discuss.green/)
 
 Installation
 ------------------------------------------
@@ -31,17 +32,17 @@ Installation
 
 #### Requirements:
 
-- A MySQL-database
-- PHP >= 8.0. Recommended: 8.1+. Required packages for Debian Linux:
+- A MySQL/MariaDB-database
+- PHP >= 8.1. Recommended: 8.3+. Required packages for Debian / Ubuntu Linux:
 
 ```bash
 # Using PHP8-packages from [deb.sury.org](https://deb.sury.org/):
-apt-get install php8.2 php8.2-cli php8.2-fpm php8.2-intl php8.2-gd php8.2-mysql \
-                php8.2-opcache php8.2-curl php8.2-xml php8.2-mbstring php8.2-zip php8.2-iconv
+apt-get install php8.3 php8.3-cli php8.3-fpm php8.3-intl php8.3-gd php8.3-mysql \
+                php8.3-opcache php8.3-curl php8.3-xml php8.3-mbstring php8.3-zip php8.3-iconv
 ```
 
 - Apache or nginx. Example files are provided here:
-  - Example configuration for [nginx](docs/nginx.sample_single_site.conf)
+  - Example configuration for [nginx](docs/nginx.sample.conf)
   - Example configuration for [apache](docs/apache.sample.conf)
 
 #### Installation:
@@ -85,11 +86,15 @@ sudo chown -R www-data:www-data runtime
 sudo chown -R www-data:www-data config #Can be skipped if you don't use the Installer
 ```
 
-### Using Docker
+### Using container images – Docker and other container orchestrations
 
-A Dockerfile to compile and run the latest development version of Antragsgrün is provided by [Jugendpresse Deutschland e.V.](https://www.jugendpresse.de) at this repository:
+[Jugendpresse Deutschland e.V.](https://www.jugendpresse.de) developed a container image, which is now maintained as an open source / collaborative project at [github.com/devops-ansible/docker-antragsgruen](https://github.com/devops-ansible/docker-antragsgruen).
 
-[https://github.com/jugendpresse/docker-antragsgruen](https://github.com/jugendpresse/docker-antragsgruen)
+The repository is maintained to run its workflows once a week to build the `devopsansiblede/antragsgruen` image.  
+The latest contents of the `master` branch will result in a `dev_YYYYMMDD-HHII` image-tag with the build date and time mentioned as well as the `development` image-tag.  
+The actual (new) releases by git tags in the official [Motiontool repository](https://github.com/CatoTH/antragsgruen) are built into images as well. They result in the tags `latest` being the latest (highest) released version, and semantic version partials mapping the corresponding versions, so `vA.B.C` is the current patch level version, `vA.B` is the latest released patch of the minor version, and `vA` is the latest released patch of the major version.
+
+You can find the container images published on [DockerHub](https://hub.docker.com/repository/docker/devopsansiblede/antragsgruen).
 
 ## Updating
 
@@ -115,19 +120,52 @@ If you encounter any problem using the web-based updater, please consult the [Up
 - If you have shell access to your server: execute ``./yii migrate`` on the command line to apply database changes
 - If you don't have shell access to your server: please refer to [UPGRADING.md](docs/UPGRADING.md) on how to upgrade your database
 
-## Deployment techniques
+## PDF-Rendering
 
-### Setting Super-Admins
+Generating PDFs is performed by the PHP-Library [TCPDF](https://github.com/tecnickcom/tcpdf) by default.
+In some cases, nicer and easier to customize PDFs can be generated though by using a separate command line tool to generate them. They need to be set up and configured by hand on the server though.
 
-Super-Admins are administrators with some additional set of privileges not available to regular site administrators:
-- They can modify the user data of registered users (setting the name, organization and a new password).
-- They can download and install new versions of Antragsgrün and set the whole site into maintenance mode.
-- On Multisite installations, they are automatically set as administrator for every site.
+### PHP-Based PDF-Rendering
 
-The list of super-admins cannot (on purpose) be changed using the Web-UI,
-but has to be manually changed in the `config/config.json` by adding and removing the user IDs in the `adminUserIds` array.
+The PHP-processes need writing permissions to the folder.
+If this is not possible, you need to specify an alternative writable folder by hand by adding the following line to the beginning of `web/index.php`:
+```php
+define("K_PATH_FONTS", "/path/to/writable/directory/");
+```
 
-### LaTeX/XeTeX-based PDF-rendering
+### FPDI-PDF
+
+If you run into the error "This PDF document probably uses a compression technique which is not supported by the free parser shipped with FPDI. (See https://www.setasign.com/fpdi-pdf-parser for more details)" and decide to use the commercial plugin, you can install the package using the following steps:
+- Extract the content of the package into the directory ``components/fpdi``, so there exists a subdirectory ``src``.
+- Run the command ``./composer.phar dump-autoload``
+
+After that, newer PDF files should be able to be parsed as well.
+
+### Weasyprint-based PDF-rendering
+
+Variant 1, for a distribution with a reasonably recent version of Weasyprint (60+):
+```bash
+apt-get install weasyprint
+```
+
+Variant 2, installation using pip (requires Python 3 including VirtualEnv support):
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install weasyprint
+weasyprint --info
+```
+(Refer to: https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#linux)
+
+Add the following settings to your config.json (and adapt them to your needs):
+
+```json
+{
+    "weasyprintPath": "/usr/bin/weasyprint"
+}
+```
+
+### LaTeX/XeTeX-based PDF-rendering (deprecated)
 
 Necessary packets on Linux (Debian):
 ```bash
@@ -151,21 +189,54 @@ Add the following settings to your config.json (and adapt them to your needs):
 
 When LaTeX complains about `scrlayer2.sty` not found, executing the SQL statement `UPDATE texTemplate SET texLayout = REPLACE(texLayout, 'scrpage2', 'scrlayer-scrpage');` followed by clearing all caches (`./yii cache/flush-all`) should fix this problem.
 
-### PHP-Based PDF-Rendering
+## Deployment and Performance Optimization
 
-The PHP-processes need writing permissions to the folder
-If this is not possible, you need to specify an alternative writable folder by hand by adding the following line to the beginning of `web/index.php`:
-```php
-define("K_PATH_FONTS", "/path/to/writable/directory/");
+### Setting Super-Admins
+
+Super-Admins are administrators with some additional set of privileges not available to regular site administrators:
+- They can modify the user data of registered users (setting the name, organization and a new password).
+- They can download and install new versions of Antragsgrün and set the whole site into maintenance mode.
+- On Multisite installations, they are automatically set as administrator for every site.
+
+The list of super-admins cannot (on purpose) be changed using the Web-UI,
+but has to be manually changed in the `config/config.json` by adding and removing the user IDs in the `adminUserIds` array.
+
+### Securing Accounts
+
+Antragsgrün comes with built-in support for protecting user accounts from brute-force accounts. By default:
+- A CAPTCHA needs to be solved after three unsuccessful login attempts for every further login attempt.
+- Users can opt in to protect their accounts using a second factor authentication app (TOTP).
+
+#### Configuring the CAPTCHA
+
+The default behavior of the CAPTCHA can be modified in the `config.json`:
+- The `mode` indicates when a CAPTCHA is shown. The default  `throttle` requires it after three unsuccessful attempts, balancing security with trying not to bother users too much. `always` always requires entering a CAPTCHA, `never` disables it entirely.
+- `difficulty` defaults to `normal`, which should be solvable by most users. To make it easier (no distortion of image), set it to `easy`.
+- `ignoredIps` is a list of IP addresses that will never receive a CAPTCHA. This is often necessary on conventions where all delegates are sharing one WiFi IP address and unsuccessful login attempts of one delegate would otherwise trigger CAPTCHA-behavior for all others.
+
+```json
+{
+    "captcha": {
+        "mode": "always", // Options: "never", "throttle", "always"
+        "ignoredIps": [
+            "127.0.0.1",
+            "::1"
+        ],
+        "difficulty": "easy" // Options: "easy", "normal"
+    }
+}
 ```
 
-### FPDI-PDF
+#### Configuring / Enforcing 2FA
 
-If you run into the error "This PDF document probably uses a compression technique which is not supported by the free parser shipped with FPDI. (See https://www.setasign.com/fpdi-pdf-parser for more details)" and decide to use the commercial plugin, you can install the package using the following steps:
-- Extract the content of the package into the directory ``components/fpdi``, so there exists a subdirectory ``src``.
-- Run the command ``./composer.phar dump-autoload``
+By default, users have the option to secure their account with a TOTP-based second factor (supported by many apps like Authy, Google Authenticator, FreeOTP or password managers). Super-Admins can change this behavior on an *per-user-basis*:
+- Setting a second factor can be enforced.
+- Setting a second factor can be disabled (changing passwords can be prevented too, e.g. for accounts meant to be shared).
+- A second factor can be removed, e.g. if the user lost access to their 2FA-app.
 
-After that, newer PDF files should be able to be parsed as well.
+#### Integration Single-Sign-On-Providers
+
+The user administration of Antragsgrün can be connected to a SSO provider, for example using SAML. However, this is not part of the core distribution, as the requirements are typically too organization-specific.
 
 ### ImageMagick
 
@@ -205,12 +276,9 @@ For command line commands, you can set this variable like this:
 Instead of "antragsgruen_sites", a custom plugin managing the authentication and authorization process and providing the custom home page is necessary for this use case. The default manager [antragsgruen_sites](plugins/antragsgruen_sites/) can be used as an example for this
 
 
-### Using Redis
+### Increasing performance by caching in Redis
 
-Install the Yii2-Redis-package:
-```bash
-./composer.phar require composer require yiisoft/yii2-redis
-```
+Redis can be used to cache the changes in amendments, user sessions, and many other aspects of the site. To enable redis, simply add a `redis` configuration key to the `config.json` and point it to your setup:
 
 Add the following settings to your config.json (and adapt them to your needs):
 ```json
@@ -218,10 +286,25 @@ Add the following settings to your config.json (and adapt them to your needs):
     "redis": {
         "hostname": "localhost",
         "port": 6379,
-        "database": 0
+        "database": 0,
+        "password": "mysecret" // optional
     }
 }
 ```
+
+### File-based View Caching (very large consultations)
+
+Antragsgrün already does a decent amount of caching by default, and even more when enabling Redis. An even more aggressive caching mode that caches some fully rendered HTML pages and PDFs can be enabled by enabling the following option in the `config.json`:
+
+```json
+{
+    "viewCacheFilePath": "/tmp/some-viewcache-directory/"
+}
+```
+
+Note that this might in some edge case lead to old information being shown and is only meant as a last resort if hundreds to thousands of users are accessing large motions in parallel.
+
+As a rule of thumb, this setting should be considered if you expect close to 1.000 motions and amendments or more in one consultation.
 
 ### JWT Key Signing
 
@@ -250,7 +333,8 @@ As a prerequisite, JWT Signing needs to be enabled (see above). Then, the locati
 ```json5
 {
     "live": {
-        "wsUri": "ws://localhost:8080/websocket", // The full URI of the websocket endpoint of the Live Component
+        "installationId": "std", // The ID identifying this installation at the Live Server
+        "wsUri": "ws://localhost:8080/websocket", // The full URI of the websocket endpoint of the Live Server
         "stompJsUri": "http://localhost:8080/stomp.umd.min.js", // The full URI of a hosted StompJS library
         "rabbitMqUri": "http://localhost:15672", // Base URI to the REST API of RabbitMQ
         "rabbitMqExchangeName": "antragsgruen-exchange", // Created by the Live Server
@@ -265,7 +349,7 @@ Developing
 
 ### Technical considerations
 
-- PHP version support: Antragsgrün supports PHP versions for one year after its [end of life](https://www.php.net/supported-versions.php) (that is, if PHP 8.0 is supported until end 2023, the first major version of Antragsgrün after end 2024 will drop support for PHP 8.0).
+- PHP version support: Antragsgrün supports PHP versions until its [end of life](https://www.php.net/supported-versions.php) (that is, if PHP 8.1 is supported until end 2025, the first major version of Antragsgrün of 2026 will drop support for PHP 8.1).
 - PHP Framework: [Yii2](https://www.yiiframework.com/) is used. While it would not be the framework of choice for a fresh start anymore, it works sufficiently well since its introduction in 2015 and is still supported, so there is no plan to migrate to Symfony of Laravel yet.
 - JavaScript: Good old [JQuery](https://jquery.com/) is used for simple interactions, though written in TypeScript and loaded via [RequireJS](https://requirejs.org/). For more complex widgets like voting, speaking lists or amendment merging, [Vue.JS](https://vuejs.org/) is used. There is no plan to redesign Antragsgrün into being a Single-Page-App.
 - REST API: The API is documented below. There will be more development regarding the REST API, including authorized endpoints using JWT based authentication.
@@ -366,7 +450,7 @@ All endpoints of the API are located under `/rest`. An OpenAPI-based description
 
 #### Installation
 
-* Create a separate (MySQL-)database for testing (`antragsgruen_tests`)
+* Create a separate (MySQL/MariaDB-)database for testing (`antragsgruen_tests`)
 * Set up the configuration file: ```
 cp config/config_tests.template.json config/config_tests.json && vi config/config_tests.json```
 * Download [ChromeDriver](https://sites.google.com/chromium.org/driver/) and move the binary into the PATH (e.g. /usr/local/bin/)

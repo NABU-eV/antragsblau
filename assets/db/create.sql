@@ -217,6 +217,7 @@ CREATE TABLE `###TABLE_PREFIX###consultationFile` (
 CREATE TABLE `###TABLE_PREFIX###consultationFileGroup` (
     `id` int(11) NOT NULL,
     `consultationId` int(11) NOT NULL,
+    `consultationTextId` int(11) DEFAULT NULL,
     `parentGroupId` int(11) DEFAULT NULL,
     `position` int(11) NOT NULL,
     `title` varchar(250) NOT NULL
@@ -338,6 +339,7 @@ CREATE TABLE `###TABLE_PREFIX###consultationText` (
   `category`       varchar(20)  NOT NULL,
   `textId`         varchar(100) NOT NULL,
   `menuPosition`   int(11)           DEFAULT NULL,
+  `policyRead`     text              DEFAULT NULL,
   `title`          text              DEFAULT NULL,
   `breadcrumb`     text              DEFAULT NULL,
   `text`           longtext,
@@ -704,6 +706,7 @@ CREATE TABLE `###TABLE_PREFIX###user` (
   `status`          TINYINT(4)  NOT NULL,
   `pwdEnc`          VARCHAR(100)         DEFAULT NULL,
   `authKey`         BINARY(100) NOT NULL,
+  `secretKey`       VARCHAR(100)         DEFAULT NULL,
   `recoveryToken`   VARCHAR(100)         DEFAULT NULL,
   `recoveryAt`      TIMESTAMP   NULL     DEFAULT NULL,
   `emailChange`     VARCHAR(255)         DEFAULT NULL,
@@ -769,6 +772,7 @@ CREATE TABLE `###TABLE_PREFIX###vote` (
   `motionId` int(11) DEFAULT NULL,
   `amendmentId` int(11) DEFAULT NULL,
   `questionId` int(11) DEFAULT NULL,
+  `weight` int(11) NOT NULL DEFAULT '1',
   `vote` tinyint(4) NOT NULL,
   `public` tinyint(4) NOT NULL,
   `dateVote` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -825,7 +829,8 @@ ALTER TABLE `###TABLE_PREFIX###amendment`
   ADD KEY `ix_amendment_voting_block` (`votingBlockId`),
   ADD KEY `fk_amendment_responsibility` (`responsibilityId`),
   ADD KEY `fk_amendment_agenda` (`agendaItemId`),
-  ADD KEY `fk_amendment_amending` (`amendingAmendmentId`);
+  ADD KEY `fk_amendment_amending` (`amendingAmendmentId`),
+  ADD KEY `amendment_status_string` (`statusString`);
 
 --
 -- Indexes for table `amendmentAdminComment`
@@ -900,7 +905,8 @@ ALTER TABLE `###TABLE_PREFIX###consultationFile`
 ALTER TABLE `###TABLE_PREFIX###consultationFileGroup`
   ADD PRIMARY KEY (`id`),
   ADD KEY `fk_filegroup_consultation` (`consultationId`),
-  ADD KEY `fk_filegroup_parent` (`parentGroupId`);
+  ADD KEY `fk_filegroup_parent` (`parentGroupId`),
+  ADD KEY `file_groups_fk_texts` (`consultationTextId`);
 
 --
 -- Indexes for table `consultationLog`
@@ -994,7 +1000,8 @@ ALTER TABLE `###TABLE_PREFIX###motion`
   ADD KEY `motion_reference_am` (`proposalReferenceId`),
   ADD KEY `agendaItemId` (`agendaItemId`),
   ADD KEY `ix_motion_voting_block` (`votingBlockId`),
-  ADD KEY `fk_motion_responsibility` (`responsibilityId`);
+  ADD KEY `fk_motion_responsibility` (`responsibilityId`),
+  ADD KEY `motion_status_string` (`statusString`);
 
 --
 -- Indexes for table `motionAdminComment`
@@ -1403,8 +1410,9 @@ ALTER TABLE `###TABLE_PREFIX###consultationFile`
 -- Constraints for table `consultationFileGroup`
 --
 ALTER TABLE `###TABLE_PREFIX###consultationFileGroup`
+    ADD CONSTRAINT `file_groups_fk_texts` FOREIGN KEY (`consultationTextId`) REFERENCES `###TABLE_PREFIX###consultationText` (`id`),
     ADD CONSTRAINT `fk_filegroup_consultation` FOREIGN KEY (`consultationId`) REFERENCES `###TABLE_PREFIX###consultation` (`id`),
-    ADD CONSTRAINT `fk_filegroup_parent` FOREIGN KEY (`parentGroupId`) REFERENCES `consultationFileGroup` (`id`);
+    ADD CONSTRAINT `fk_filegroup_parent` FOREIGN KEY (`parentGroupId`) REFERENCES `###TABLE_PREFIX###consultationFileGroup` (`id`);
 
 --
 -- Constraints for table `consultationLog`

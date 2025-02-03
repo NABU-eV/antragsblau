@@ -27,7 +27,7 @@ class Manifesto
         $type->policySupportMotions         = (string)IPolicy::POLICY_NOBODY;
         $type->policySupportAmendments      = (string)IPolicy::POLICY_NOBODY;
         $type->initiatorsCanMergeAmendments = ConsultationMotionType::INITIATORS_MERGE_NEVER;
-        $type->texTemplateId                = ($config->xelatexPath || $config->lualatexPath ? 1 : null);
+        $type->texTemplateId                = null;
         $type->amendmentMultipleParagraphs  = ConsultationMotionType::AMEND_PARAGRAPHS_MULTIPLE;
         $type->motionLikesDislikes          = 0;
         $type->amendmentLikesDislikes       = 0;
@@ -57,7 +57,7 @@ class Manifesto
         $section->position      = 0;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_manifesto_title');
-        $section->required      = 1;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_YES;
         $section->maxLen        = 0;
         $section->fixedWidth    = 0;
         $section->lineNumbers   = 0;
@@ -73,7 +73,7 @@ class Manifesto
         $section->position      = 1;
         $section->status        = ConsultationSettingsMotionSection::STATUS_VISIBLE;
         $section->title         = \Yii::t('structure', 'preset_manifesto_text');
-        $section->required      = 1;
+        $section->required      = ConsultationSettingsMotionSection::REQUIRED_YES;
         $section->maxLen        = 0;
         $section->fixedWidth    = 1;
         $section->lineNumbers   = 1;

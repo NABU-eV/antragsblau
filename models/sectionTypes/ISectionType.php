@@ -2,9 +2,10 @@
 
 namespace app\models\sectionTypes;
 
-use app\components\latex\Content;
+use app\components\latex\Content as LatexContent;
+use app\components\html2pdf\Content as HtmlToPdfContent;
 use app\models\settings\MotionSection;
-use app\models\db\{Consultation, IMotionSection, Motion};
+use app\models\db\{Consultation, ConsultationSettingsMotionSection, IMotionSection, Motion};
 use app\models\exceptions\FormError;
 use app\models\forms\CommentForm;
 use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
@@ -22,6 +23,7 @@ abstract class ISectionType
     public const TYPE_PDF_ATTACHMENT  = 5;
     public const TYPE_PDF_ALTERNATIVE = 6;
     public const TYPE_VIDEO_EMBED     = 7;
+    public const TYPE_TEXT_EDITORIAL  = 8;
 
     protected const TYPE_API_TITLE = 'Title';
     protected const TYPE_API_TEXT_SIMPLE = 'TextSimple';
@@ -31,6 +33,7 @@ abstract class ISectionType
     protected const TYPE_API_PDF_ATTACHMENT = 'PDFAttachment';
     protected const TYPE_API_PDF_ALTERNATIVE = 'PDFAlternative';
     protected const TYPE_API_VIDEO_EMBED = 'VideoEmbed';
+    protected const TYPE_API_TEXT_EDITORIAL = 'VideoEmbed';
 
     protected IMotionSection $section;
     protected bool $absolutizeLinks = false;
@@ -44,7 +47,7 @@ abstract class ISectionType
     }
 
     /**
-     * @return string[]
+     * @return array<int|string, string>
      */
     public static function getTypes(): array
     {
@@ -52,6 +55,7 @@ abstract class ISectionType
             static::TYPE_TITLE           => \Yii::t('structure', 'section_title'),
             static::TYPE_TEXT_SIMPLE     => \Yii::t('structure', 'section_text'),
             static::TYPE_TEXT_HTML       => \Yii::t('structure', 'section_html'),
+            static::TYPE_TEXT_EDITORIAL  => \Yii::t('structure', 'section_editorial'),
             static::TYPE_IMAGE           => \Yii::t('structure', 'section_image'),
             static::TYPE_TABULAR         => \Yii::t('structure', 'section_tabular'),
             static::TYPE_PDF_ATTACHMENT  => \Yii::t('structure', 'section_pdf_attachment'),
@@ -66,6 +70,7 @@ abstract class ISectionType
             static::TYPE_TITLE => static::TYPE_API_TITLE,
             static::TYPE_TEXT_SIMPLE => static::TYPE_API_TEXT_SIMPLE,
             static::TYPE_TEXT_HTML => static::TYPE_API_TEXT_HTML,
+            static::TYPE_TEXT_EDITORIAL => static::TYPE_API_TEXT_EDITORIAL,
             static::TYPE_IMAGE => static::TYPE_API_IMAGE,
             static::TYPE_TABULAR => static::TYPE_API_TABULAR,
             static::TYPE_PDF_ALTERNATIVE => static::TYPE_API_PDF_ALTERNATIVE,
@@ -111,13 +116,21 @@ abstract class ISectionType
         $this->motionContext = $motion;
     }
 
-
     protected function getFormLabel(): string
     {
         $type = $this->section->getSettings();
         $str  = '<label for="sections_' . $type->id . '"';
-        if ($type->required) {
+        if ($type->required === ConsultationSettingsMotionSection::REQUIRED_YES) {
             $str .= ' class="required" data-required-str="' . Html::encode(\Yii::t('motion', 'field_required')) . '"';
+        } elseif ($type->required === ConsultationSettingsMotionSection::REQUIRED_ENCOURAGED) {
+            $msgTitle = \Yii::t('motion', 'field_encouraged_title');
+            $msgErr = str_replace('%FIELD%', $this->section->getSettings()->title, \Yii::t('motion', 'field_encouraged_msg'));
+            $msgSubmit = \Yii::t('motion', 'field_encouraged_submit');
+            $msgFill = \Yii::t('motion', 'field_encouraged_fill');
+            $str .= ' class="encouraged" data-encouraged-str="' . Html::encode($msgErr) . '"' .
+                    ' data-encouraged-title="' . Html::encode($msgTitle) . '"' .
+                    ' data-encouraged-submit="' . Html::encode($msgSubmit) . '"' .
+                    ' data-encouraged-fill="' . Html::encode($msgFill) . '"';
         } else {
             $str .= ' class="optional" data-optional-str="' . Html::encode(\Yii::t('motion', 'field_optional')) . '"';
         }
@@ -130,7 +143,31 @@ abstract class ISectionType
         return $str;
     }
 
+    protected function getHintsAfterFormLabel(): string
+    {
+        $type = $this->section->getSettings();
+        $str = '';
+
+        if ($type->maxLen !== 0) {
+            $len = abs($type->maxLen);
+            $str .= '<div class="maxLenHint"><span class="icon glyphicon glyphicon-info-sign" aria-hidden="true"></span> ';
+            $str .= str_replace(
+                ['%LEN%', '%COUNT%'],
+                [$len, '<span class="counter"></span>'],
+                \Yii::t('motion', 'max_len_hint')
+            );
+            $str .= '</div>';
+        }
+        if ($type->getSettingsObj()->explanationHtml) {
+            $str .= '<div class="alert alert-info">' . $type->getSettingsObj()->explanationHtml . '</div>';
+        }
+
+        return $str;
+    }
+
     abstract public function isEmpty(): bool;
+
+    abstract public function showIfEmpty(): bool;
 
     abstract public function isFileUploadType(): bool;
 
@@ -139,10 +176,9 @@ abstract class ISectionType
     abstract public function getAmendmentFormField(): string;
 
     /**
-     * @param string $data
      * @throws FormError
      */
-    abstract public function setMotionData($data): void;
+    abstract public function setMotionData(array|string $data): void;
 
     abstract public function deleteMotionData(): void;
 
@@ -150,7 +186,7 @@ abstract class ISectionType
      * @param array $data
      * @throws FormError
      */
-    abstract public function setAmendmentData($data): void;
+    abstract public function setAmendmentData(array|string $data): void;
 
     abstract public function getSimple(bool $isRight, bool $showAlways = false): string;
 
@@ -175,9 +211,13 @@ abstract class ISectionType
 
     abstract public function printAmendmentToPDF(IPDFLayout $pdfLayout, IPdfWriter $pdf): void;
 
-    abstract public function printMotionTeX(bool $isRight, Content $content, Consultation $consultation): void;
+    abstract public function printMotionTeX(bool $isRight, LatexContent $content, Consultation $consultation): void;
 
-    abstract public function printAmendmentTeX(bool $isRight, Content $content): void;
+    abstract public function printAmendmentTeX(bool $isRight, LatexContent $content): void;
+
+    abstract public function printMotionHtml2Pdf(bool $isRight, HtmlToPdfContent $content, Consultation $consultation): void;
+
+    abstract public function printAmendmentHtml2Pdf(bool $isRight, HtmlToPdfContent $content): void;
 
     abstract public function getMotionODS(): string;
 

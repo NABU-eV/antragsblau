@@ -2,6 +2,7 @@
 
 use app\components\Tools;
 use app\models\db\Motion;
+use app\models\forms\MotionDeepCopy;
 use yii\helpers\Html;
 
 /**
@@ -15,32 +16,58 @@ $date   = Tools::dateSql2bootstrapdate(date('Y-m-d'));
 $voting       = $motion->getVotingData();
 $votingOpened = $voting->hasAnyData();
 $statusesAll = $motion->getMyConsultation()->getStatuses()->getStatusNames();
+
+$newStatusPossibilities = [
+    'resolution_final' => Yii::t('amend', 'merge_new_status_res_f'),
+    'resolution_preliminary' => Yii::t('amend', 'merge_new_status_res_p'),
+    'motion' => Yii::t('amend', 'merge_new_status_screened'),
+];
+$newResolutionProposer = '';
+foreach (\app\models\settings\AntragsgruenApp::getActivePlugins() as $plugin) {
+    if ($newStatuses = $plugin::getResolutionStatusOptions($motion->getMyConsultation())) {
+        $newStatusPossibilities = $newStatuses;
+    }
+    if ($newProposer = $plugin::getResolutionProposer($oldMotion)) {
+        $newResolutionProposer = $newProposer;
+    }
+}
+
+
 ?>
 <h2 class="green"><?= Yii::t('amend', 'merge_new_status') ?></h2>
 <div class="content contentMotionStatus">
     <div class="newMotionStatus">
-        <label>
-            <input type="radio" name="newStatus" value="motion" checked>
-            <?= Yii::t('amend', 'merge_new_status_screened') ?>
-        </label>
-        <label>
-            <input type="radio" name="newStatus" value="resolution_final">
-            <?= Yii::t('amend', 'merge_new_status_res_f') ?>
-        </label>
-        <label>
-            <input type="radio" name="newStatus" value="resolution_preliminary">
-            <?= Yii::t('amend', 'merge_new_status_res_p') ?>
-        </label>
+        <?php
+        $firstKey = array_keys($newStatusPossibilities)[0];
+        foreach ($newStatusPossibilities as $key => $name) {
+            echo '<label>';
+            echo Html::radio('newStatus', $key === $firstKey, ['value' => $key]);
+            echo ' ' . $name;
+            echo '</label>';
+        }
+        ?>
     </div>
     <div class="newMotionInitiator">
         <label for="newInitiator"><?= Yii::t('amend', 'merge_new_orga') ?></label>
-        <input class="form-control" name="newInitiator" type="text" id="newInitiator">
+        <input class="form-control" name="newInitiator" type="text" id="newInitiator" value="<?= Html::encode($newResolutionProposer) ?>">
         <label for="dateResolution"><?= Yii::t('amend', 'merge_new_resolution_date') ?></label>
         <div class="input-group date" id="dateResolutionHolder">
             <input type="text" class="form-control" name="dateResolution" id="dateResolution"
                    value="<?= Html::encode($date) ?>" data-locale="<?= Html::encode($locale) ?>">
             <span class="input-group-addon"><span class="glyphicon glyphicon-calendar" aria-hidden="true"></span></span>
         </div>
+        <?php
+        $compatibleTypes = $motion->getMyMotionType()->getCompatibleMotionTypes([MotionDeepCopy::SKIP_NON_AMENDABLE]);
+        if (count($compatibleTypes) > 1) {
+            $options = [];
+            foreach ($compatibleTypes as $motionType) {
+                $options[$motionType->id] = $motionType->titleSingular;
+            }
+            $attrs = ['id' => 'motionType', 'class' => 'stdDropdown fullsize'];
+            echo '<label for="newMotionType">' . Yii::t('amend', 'merge_new_motion_type') . '</label>';
+            echo Html::dropDownList('newMotionType', $motion->motionTypeId, $options, $attrs);
+        }
+        ?>
     </div>
     <div class="newMotionSubstatus">
         <div class="title"><?= Yii::t('amend', 'merge_new_substatus') ?>:</div>

@@ -6,6 +6,7 @@ namespace app\components;
 
 use app\models\db\IMotion;
 use app\models\db\Motion;
+use app\models\db\repostory\MotionRepository;
 
 class MotionNumbering
 {
@@ -14,8 +15,10 @@ class MotionNumbering
         $new = \Yii::t('motion', 'prefix_new_code');
         $newMatch = preg_quote($new, '/');
         if (preg_match('/' . $newMatch . '/i', $titlePrefix)) {
-            /** @var string[] $parts */
             $parts = preg_split('/(' . $newMatch . '\s*)/i', $titlePrefix, -1, PREG_SPLIT_DELIM_CAPTURE);
+            if ($parts === false) {
+                return $titlePrefix . $new;
+            }
             $last = (int)array_pop($parts);
             $last = ($last > 0 ? $last + 1 : 2); // NEW BLA -> NEW 2
             $parts[] = $last;
@@ -43,10 +46,11 @@ class MotionNumbering
     {
         $roots = [];
 
-        if ($motion->parentMotionId && $motion->replacedMotion) {
-            if (!in_array($motion->replacedMotion->id, $alreadySeenIds)) {
-                $alreadySeenIds[] = $motion->replacedMotion->id;
-                $roots = array_merge($roots, self::getHistoryRootMotion($motion->replacedMotion, $includeObsoletedByMotions, $alreadySeenIds));
+        $replacedMotion = MotionRepository::getReplacedByMotion($motion);
+        if ($replacedMotion) {
+            if (!in_array($replacedMotion->id, $alreadySeenIds)) {
+                $alreadySeenIds[] = $replacedMotion->id;
+                $roots = array_merge($roots, self::getHistoryRootMotion($replacedMotion, $includeObsoletedByMotions, $alreadySeenIds));
             }
         } else {
             // Hint: this motion is considered a root motion even if below there is another motion found that is obsoleted by this motion
@@ -54,7 +58,7 @@ class MotionNumbering
         }
 
         // Add the root motions of those motions that have been obsoleted by the current motion
-        foreach (Motion::getObsoletedByMotions($motion) as $obsoletedMotion) {
+        foreach (MotionRepository::getObsoletedByMotionsInAllConsultations($motion) as $obsoletedMotion) {
             if (!in_array($obsoletedMotion->id, $alreadySeenIds)) {
                 $alreadySeenIds[] = $obsoletedMotion->id;
                 $roots = array_merge($roots, self::getHistoryRootMotion($obsoletedMotion, $includeObsoletedByMotions, $alreadySeenIds));
@@ -70,7 +74,7 @@ class MotionNumbering
     public static function getHistoryFromRoot(Motion $motion, array $alreadySeenIds = []): array
     {
         $motions = [$motion];
-        foreach ($motion->replacedByMotions as $replacedByMotion) {
+        foreach (MotionRepository::getReplacedByMotionsInAllConsultations($motion) as $replacedByMotion) {
             if (in_array($replacedByMotion->id, $alreadySeenIds, true)) {
                 continue;
             }
@@ -151,7 +155,7 @@ class MotionNumbering
         // the behavior is somewhat undefined for now
         $directDescendant = null;
         $subDescendant = null;
-        foreach ($motion->replacedByMotions as $replacedByMotion) {
+        foreach (MotionRepository::getReplacedByMotionsInAllConsultations($motion) as $replacedByMotion) {
             if (!in_array($replacedByMotion->status, $invisibleStatuses)) {
                 $directDescendant = $replacedByMotion;
             }
@@ -167,6 +171,8 @@ class MotionNumbering
 
     public static function updateAllVersionsOfMotion(Motion $motion, bool $onlyConsultation, callable $updater): void
     {
+        $motion->getMyConsultation()->refresh();
+
         $consultationId = $motion->consultationId;
         foreach (self::getSortedHistoryForMotion($motion, false) as $motion) {
             if ($onlyConsultation && $motion->consultationId !== $consultationId) {

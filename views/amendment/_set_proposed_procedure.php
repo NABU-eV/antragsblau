@@ -6,9 +6,8 @@
  * @var string $context
  */
 
-use app\models\settings\PrivilegeQueryContext;
-use app\models\settings\Privileges;
-use app\components\{HTMLTools, Tools, UrlHelper};
+use app\models\settings\{PrivilegeQueryContext, Privileges};
+use app\components\{HTMLTools, IMotionStatusFilter, Tools, UrlHelper};
 use app\models\db\{Amendment, IAdminComment, Motion, User};
 use yii\helpers\Html;
 
@@ -283,12 +282,13 @@ $voting = $amendment->getVotingData();
         <label class="headingLabel"><?= Yii::t('amend', 'proposal_obsoleted_by') ?>...</label>
         <?php
         $options = ['-'];
+        $filter = IMotionStatusFilter::onlyUserVisible($consultation, false);
         foreach ($amendment->getMyMotion()->getVisibleAmendmentsSorted() as $otherAmend) {
             if ($otherAmend->id !== $amendment->id) {
                 $options[$otherAmend->id] = $otherAmend->getTitle();
             }
         }
-        foreach ($consultation->getVisibleIMotionsSorted(false) as $otherMotion) {
+        foreach ($filter->getFilteredConsultationIMotionsSorted() as $otherMotion) {
             if ($otherMotion->id === $amendment->motionId) {
                 continue;
             }
@@ -307,7 +307,8 @@ $voting = $amendment->getVotingData();
         <label class="headingLabel"><?= Yii::t('amend', 'proposal_moved_to_other_motion') ?>:</label>
         <?php
         $options = ['-'];
-        foreach ($consultation->getVisibleMotions(true) as $otherMotion) {
+        $filter = IMotionStatusFilter::onlyUserVisible($consultation, true);
+        foreach ($filter->getFilteredConsultationMotions() as $otherMotion) {
             if ($otherMotion->id === $amendment->motionId) {
                 continue;
             }
@@ -384,19 +385,19 @@ $voting = $amendment->getVotingData();
     </section>
     <section class="notifyProposerSection hidden">
         <h3><?= Yii::t('amend', 'proposal_notify_text') ?></h3>
-        <div class="row proposalFrom">
+        <div class="proposalFrom">
             <?php
             $replyTo = \app\components\mail\Tools::getDefaultReplyTo($amendment, $consultation, User::getCurrentUser());
             $fromName = \app\components\mail\Tools::getDefaultMailFromName($consultation);
             $placeholderReplyTo = Yii::t('amend', 'proposal_notify_replyto') . ': ' . ($replyTo ? $replyTo : '-');
             $placeholderName = Yii::t('amend', 'proposal_notify_name') . ': ' . $fromName;
             ?>
-            <div class="col-md-6">
+            <div>
                 <input type="text" name="proposalNotificationFrom" id="proposalNotificationFrom" class="form-control"
                        title="<?= Yii::t('amend', 'proposal_notify_name') ?>"
                        placeholder="<?= Html::encode($placeholderName) ?>">
             </div>
-            <div class="col-md-6">
+            <div>
                 <input type="text" name="proposalNotificationReply" id="proposalNotificationReply" class="form-control"
                        title="<?= Yii::t('amend', 'proposal_notify_replyto') ?>"
                        placeholder="<?= Html::encode($placeholderReplyTo) ?>">
@@ -427,7 +428,7 @@ $voting = $amendment->getVotingData();
         </div>
     </section>
     <section class="saving showIfChanged">
-        <button class="btn btn-default btn-sm">
+        <button class="btn btn-primary btn-sm">
             <?= Yii::t('amend', 'proposal_save_changes') ?>
         </button>
     </section>

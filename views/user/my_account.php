@@ -2,6 +2,7 @@
 
 use app\components\UrlHelper;
 use app\models\db\User;
+use OTPHP\TOTP;
 use yii\helpers\Html;
 
 /**
@@ -9,6 +10,9 @@ use yii\helpers\Html;
  * @var User $user
  * @var bool $emailBlocked
  * @var int $pwMinLen
+ * @var bool $hasSecondFactor
+ * @var bool $canRemoveSecondFactor
+ * @var TOTP|null $addSecondFactorKey
  */
 
 /** @var \app\controllers\UserController $controller */
@@ -28,42 +32,145 @@ echo '<h1>' . Yii::t('user', 'my_acc_title') . '</h1>';
 
 
 if ($externalAuthenticator === null) {
+    $hasChangeableFields = false;
     echo Html::beginForm($formUrl, 'post', ['class' => 'userAccountForm content']);
 
     echo $controller->showErrors();
-    ?>
 
-    <div class="stdTwoCols">
-        <label class="leftColumn control-label" for="nameGiven"><?= Yii::t('user', 'name_given') ?>:</label>
-        <div class="rightColumn">
-            <input type="text" name="name_given" value="<?= Html::encode($user->getGivenNameWithFallback()) ?>"
-                   class="form-control" id="nameGiven" required>
+    $nameEditable = (($user->fixedData & User::FIXED_NAME) === 0);
+    if ($nameEditable) {
+        $hasChangeableFields = true;
+    }
+    if ($nameEditable || $user->getGivenNameWithFallback() !== '' || $user->getFamilyNameWithFallback() !== '') {
+        ?>
+        <div class="stdTwoCols">
+            <label class="leftColumn control-label" for="nameGiven"><?= Yii::t('user', 'name_given') ?>:</label>
+            <div class="rightColumn">
+                <?php
+                if ($nameEditable) {
+                    ?>
+                    <input type="text" name="name_given" value="<?= Html::encode($user->getGivenNameWithFallback()) ?>"
+                           class="form-control" id="nameGiven" required>
+                    <?php
+                } else {
+                    echo Html::encode($user->getGivenNameWithFallback());
+                }
+                ?>
+            </div>
         </div>
-    </div>
-    <div class="stdTwoCols">
-        <label class="leftColumn control-label" for="nameFamily"><?= Yii::t('user', 'name_family') ?>:</label>
-        <div class="rightColumn">
-            <input type="text" name="name_family" value="<?= Html::encode($user->getFamilyNameWithFallback()) ?>"
-                   class="form-control" id="nameFamily">
+        <div class="stdTwoCols">
+            <label class="leftColumn control-label" for="nameFamily"><?= Yii::t('user', 'name_family') ?>:</label>
+            <div class="rightColumn">
+                <?php
+                if ($nameEditable) {
+                    ?>
+                    <input type="text" name="name_family" value="<?= Html::encode($user->getFamilyNameWithFallback()) ?>"
+                           class="form-control" id="nameFamily">
+                    <?php
+                } else {
+                    echo Html::encode($user->getFamilyNameWithFallback());
+                }
+                ?>
+            </div>
         </div>
-    </div>
-    <div class="stdTwoCols">
-        <label class="leftColumn control-label" for="userPwd"><?= Yii::t('user', 'pwd_change') ?>:</label>
-        <div class="rightColumn">
-            <input type="password" name="pwd" value="" class="form-control" id="userPwd"
-                   placeholder="<?= Yii::t('user', 'pwd_change_hint') ?>" data-min-len="<?= $pwMinLen ?>">
+        <?php
+    }
+    if ($user->organization) {
+        ?>
+        <div class="stdTwoCols">
+            <label class="leftColumn control-label" for="nameFamily">Organisation:</label>
+            <div class="rightColumn"><?= Html::encode($user->organization) ?></div>
         </div>
-    </div>
-    <div class="stdTwoCols">
-        <label class="leftColumn control-label" for="userPwd2"><?= Yii::t('user', 'pwd_confirm') ?>:</label>
-        <div class="rightColumn">
-            <input type="password" name="pwd2" value="" class="form-control" id="userPwd2">
+        <?php
+    }
+    if (!$user->getSettingsObj()->preventPasswordChange) {
+        $hasChangeableFields = true;
+        ?>
+        <div class="stdTwoCols">
+            <label class="leftColumn control-label" for="userPwd"><?= Yii::t('user', 'pwd_change') ?>:</label>
+            <div class="rightColumn">
+                <input type="password" name="pwd" value="" class="form-control" id="userPwd"
+                       placeholder="<?= Yii::t('user', 'pwd_change_hint') ?>" data-min-len="<?= $pwMinLen ?>">
+            </div>
         </div>
-    </div>
-    <?php
+        <div class="stdTwoCols">
+            <label class="leftColumn control-label" for="userPwd2"><?= Yii::t('user', 'pwd_confirm') ?>:</label>
+            <div class="rightColumn">
+                <input type="password" name="pwd2" value="" class="form-control" id="userPwd2">
+            </div>
+        </div>
+        <?php
+    }
+
+    if ($user->supportsSecondFactorAuth()) {
+        $hasChangeableFields = true;
+        ?>
+        <div class="stdTwoCols tfaRow">
+            <div class="leftColumn">
+                <?= Yii::t('user', '2fa_title') ?>
+            </div>
+            <div class="rightColumn">
+                <?php
+                if ($canRemoveSecondFactor) {
+                    ?>
+                    <div class="tfaActive">
+                        <span class="glyphicon glyphicon-ok" aria-hidden="true"></span>
+                        <?= Yii::t('user', '2fa_activated') ?>
+                    </div>
+                    <div class="secondFactorRemoveOpener">
+                        <button type="button" class="btn btn-link btn2FaRemoveOpen">
+                            <?= Yii::t('user', '2fa_remove_open') ?>
+                        </button>
+                    </div>
+                    <div class="secondFactorRemoveBody hidden">
+                        <label>
+                            <?= Yii::t('user', '2fa_remove_code') ?>:
+                            <input type="text" name="remove2fa" class="form-control">
+                        </label>
+                    </div>
+                    <?php
+                } elseif ($addSecondFactorKey) {
+                    $result = \app\components\SecondFactorAuthentication::createQrCode($addSecondFactorKey);
+                    ?>
+                    <div class="secondFactorAdderOpener">
+                        <span class="tfaNotActive"><?= Yii::t('user', '2fa_off') ?></span>
+                        <button type="button" class="btn btn-link btn2FaAdderOpen">
+                            <span class="glyphicon glyphicon-chevron-down" aria-hidden="true"></span>
+                            <?= Yii::t('user', '2fa_activate_opener') ?>
+                        </button>
+                    </div>
+                    <div class="secondFactorAdderBody hidden">
+                        <div class="alert alert-info">
+                            <p>
+                                <?= Yii::t('user', '2fa_add_explanation') ?><br><br>
+                                <?= Yii::t('user', '2fa_general_explanation') ?>
+                            </p>
+                        </div>
+
+                        <div>
+                            <h3><?= Yii::t('user', '2fa_add_step1') ?></h3>
+                            <img src="<?= $result->getDataUri() ?>" alt="<?= Yii::t('user', '2fa_img_alt') ?>" class="tfaqr">
+                        </div>
+                        <h3><?= Yii::t('user', '2fa_add_step2') ?></h3>
+                        <label>
+                            <?= Yii::t('user', '2fa_enter_code') ?>:
+                            <input type="text" name="set2fa" class="form-control">
+                        </label>
+                    </div>
+                    <?php
+                } else {
+                    echo '<span class="glyphicon glyphicon-ok" aria-hidden="true"></span> ';
+                    echo Yii::t('user', '2fa_activated');
+                }
+                ?>
+            </div>
+        </div>
+        <?php
+    }
 
     $selectableUserOrgas = $user->getSelectableUserOrganizations();
     if ($selectableUserOrgas) {
+        $hasChangeableFields = true;
         ?>
         <div class="stdTwoCols">
             <label class="leftColumn control-label" for="userPwd2"><?= Yii::t('user', 'organisation_primary') ?>:</label>
@@ -128,55 +235,66 @@ if ($externalAuthenticator === null) {
         <?php
     }
 
-    if ($user->email) {
-        echo '<div class="stdTwoCols emailExistingRow">
-    <label class="leftColumn control-label">' . Yii::t('user', 'email_address') . ':</label>
-    <div class="rightColumn"><span class="currentEmail">';
-        if ($user->emailConfirmed) {
-            echo Html::encode($user->email);
-        } else {
-            echo '<span style="color: gray;">' . Html::encode($user->email) . '</span> ' .
-                 '(' . Yii::t('user', 'email_unconfirmed') . ')';
-        }
-        echo '</span><button type="button" class="btn btn-link requestEmailChange">' . Yii::t('user', 'emailchange_call') . '</button>';
-
-        $changeRequested = $user->getChangeRequestedEmailAddress();
-        if ($changeRequested) {
-            echo '<div class="changeRequested">' . Yii::t('user', 'emailchange_requested') . ': ';
-            echo Html::encode($changeRequested);
-            echo '<button type="submit" name="resendEmailChange" class="link resendButton">' .
-                 Yii::t('user', 'emailchange_resend') . '</button>';
-            echo '</div>';
-        }
-
-        echo '<div class="checkbox">
-        <label>' . Html::checkbox('emailBlocklist', $emailBlocked) . Yii::t('user', 'email_blocklist') . '</label>
-      </div>';
-
-        echo '</div>
-</div>';
+    $emailEditable = (($user->fixedData & User::FIXED_EMAIL) === 0);
+    if (!$emailEditable && $user->email) {
+        echo '<div class="stdTwoCols">';
+        echo '<div class="leftColumn">' . Yii::t('user', 'email_address') . ':</div>';
+        echo '<div class="rightColumn">' . Html::encode($user->email) . '</div>';
+        echo '</div>';
     }
-    ?>
 
-    <div class="stdTwoCols emailChangeRow">
-        <label class="leftColumn control-label" for="userEmail"><?= Yii::t('user', 'email_address_new') ?>:</label>
-        <div class="rightColumn">
-            <?php
+    if ($emailEditable) {
+        $hasChangeableFields = true;
+        if ($user->email) {
+            echo '<div class="stdTwoCols emailExistingRow">
+        <label class="leftColumn control-label">' . Yii::t('user', 'email_address') . ':</label>
+        <div class="rightColumn"><span class="currentEmail">';
+            if ($user->emailConfirmed) {
+                echo Html::encode($user->email);
+            } else {
+                echo '<span style="color: gray;">' . Html::encode($user->email) . '</span> ' .
+                     '(' . Yii::t('user', 'email_unconfirmed') . ')';
+            }
+            echo '</span><button type="button" class="btn btn-link requestEmailChange">' . Yii::t('user', 'emailchange_call') . '</button>';
+
             $changeRequested = $user->getChangeRequestedEmailAddress();
             if ($changeRequested) {
                 echo '<div class="changeRequested">' . Yii::t('user', 'emailchange_requested') . ': ';
                 echo Html::encode($changeRequested);
-                echo '<button type="submit" name="resendEmailChange" class="link resendButton">' .
+                echo '<br><button type="submit" name="resendEmailChange" class="link resendButton">' .
                      Yii::t('user', 'emailchange_resend') . '</button>';
                 echo '</div>';
             }
-            ?>
-            <input type="email" name="email" value="" class="form-control" id="userEmail">
 
+            echo '<div class="checkbox emailBlocklistCheckbox">
+            <label>' . Html::checkbox('emailBlocklist', $emailBlocked) . Yii::t('user', 'email_blocklist') . '</label>
+          </div>';
+
+            echo '</div>
+    </div>';
+        }
+        ?>
+
+        <div class="stdTwoCols emailChangeRow">
+            <label class="leftColumn control-label" for="userEmail"><?= Yii::t('user', 'email_address_new') ?>:</label>
+            <div class="rightColumn">
+                <?php
+                $changeRequested = $user->getChangeRequestedEmailAddress();
+                if ($changeRequested) {
+                    echo '<div class="changeRequested">' . Yii::t('user', 'emailchange_requested') . ': ';
+                    echo Html::encode($changeRequested);
+                    echo '<button type="submit" name="resendEmailChange" class="link resendButton">' .
+                         Yii::t('user', 'emailchange_resend') . '</button>';
+                    echo '</div>';
+                }
+                ?>
+                <input type="email" name="email" value="" class="form-control" id="userEmail">
+
+            </div>
         </div>
-    </div>
+        <?php
+    }
 
-    <?php
     if ($user->getSettingsObj()->ppReplyTo !== '') {
         ?>
         <div class="stdTwoCols">
@@ -188,22 +306,24 @@ if ($externalAuthenticator === null) {
         </div>
         <?php
     }
-    ?>
 
-    <div class="saveholder">
-        <button type="submit" name="save" class="btn btn-primary"><?= Yii::t('base', 'save') ?></button>
-    </div>
-    <?= Html::endForm() ?>
+    if ($hasChangeableFields) {
+        ?>
+        <div class="saveholder">
+            <button type="submit" name="save" class="btn btn-primary"><?= Yii::t('base', 'save') ?></button>
+        </div>
+        <?php
+    }
 
-    <br><br>
+    echo Html::endForm();
 
-    <?php
+    echo '<br><br>';
 }
 
 
 if ($controller->site) {
     ?>
-    <section aria-labelledby="notificationsTitle">
+    <section aria-labelledby="notificationsTitle" id="notificationsSection">
         <h2 class="green" id="notificationsTitle"><?= Yii::t('user', 'notification_title') ?></h2>
         <div class="content">
             <?= Yii::t('user', 'notification_intro') ?>
@@ -225,7 +345,7 @@ if ($controller->site) {
 }
 ?>
 
-    <section aria-labelledby="userDataExportTitle">
+    <section aria-labelledby="userDataExportTitle" id="userDataExportSection">
         <h2 class="green" id="userDataExportTitle"><?= Yii::t('user', 'export_title') ?></h2>
         <div class="content userDataExport">
             <?= Yii::t('user', 'export_intro') ?>
@@ -242,23 +362,19 @@ if ($controller->site) {
     </section>
 
 <?php
-if ($externalAuthenticator === null) {
+if ($externalAuthenticator === null && \app\models\settings\AntragsgruenApp::getInstance()->allowAccountDeletion) {
     ?>
     <br><br>
 
-    <section aria-labelledby="delAccountTitle">
+    <section aria-labelledby="delAccountTitle" id="deleteAccountSection">
         <h2 class="green" id="delAccountTitle"><?= Yii::t('user', 'del_title') ?></h2>
         <?= Html::beginForm($formUrl, 'post', ['class' => 'accountDeleteForm content']) ?>
         <div class="alert alert-info">
             <?= Yii::t('user', 'del_explanation') ?>
         </div>
-        <div class="row">
-            <div class="col-md-6">
-                <div class="checkbox">
-                    <label><?= Html::checkbox('accountDeleteConfirm') . Yii::t('user', 'del_confirm') ?></label>
-                </div>
-            </div>
-            <div class="col-md-6" style="text-align: right;">
+        <div class="submit">
+            <label class="confirmation"><?= Html::checkbox('accountDeleteConfirm') . Yii::t('user', 'del_confirm') ?></label>
+            <div>
                 <button type="submit" name="accountDelete" class="btn btn-danger"><?= Yii::t('user', 'del_do') ?></button>
             </div>
         </div>

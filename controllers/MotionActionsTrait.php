@@ -5,6 +5,8 @@ namespace app\controllers;
 use app\models\consultationLog\ProposedProcedureChange;
 use app\models\forms\ProposedChangeForm;
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges, InitiatorForm};
+use app\models\sectionTypes\ISectionType;
+use app\models\sectionTypes\TextEditorial;
 use app\models\http\{HtmlErrorResponse,
     HtmlResponse,
     JsonResponse,
@@ -17,6 +19,7 @@ use app\models\db\{Amendment,
     ConsultationLog,
     ConsultationSettingsTag,
     IComment,
+    IMotion,
     Motion,
     MotionAdminComment,
     MotionComment,
@@ -42,7 +45,6 @@ trait MotionActionsTrait
      */
     private function getComment(Motion $motion, int $commentId, bool $needsScreeningRights): MotionComment
     {
-        /** @var MotionComment $comment */
         $comment = MotionComment::findOne($commentId);
         if (!$comment || $comment->motionId != $motion->id || $comment->status != IComment::STATUS_VISIBLE) {
             throw new Internal(\Yii::t('comment', 'err_not_found'));
@@ -129,7 +131,6 @@ trait MotionActionsTrait
      */
     private function screenCommentAccept(Motion $motion, int $commentId): void
     {
-        /** @var MotionComment $comment */
         $comment = MotionComment::findOne($commentId);
         if (!$comment || $comment->motionId !== $motion->id) {
             throw new Internal(\Yii::t('comment', 'err_not_found'));
@@ -157,7 +158,6 @@ trait MotionActionsTrait
      */
     private function screenCommentReject(Motion $motion, int $commentId): void
     {
-        /** @var MotionComment $comment */
         $comment = MotionComment::findOne($commentId);
         if (!$comment || $comment->motionId !== $motion->id) {
             throw new Internal(\Yii::t('comment', 'err_not_found'));
@@ -477,6 +477,7 @@ trait MotionActionsTrait
 
         if ($this->getHttpRequest()->post('setStatus', null) !== null) {
             $originalMotionId = $motion->id;
+            $originalProposalStatus = $motion->proposalStatus;
             foreach (AntragsgruenApp::getActivePlugins() as $plugin) {
                 /** @var Motion $motion */
                 $motion = $plugin::onBeforeProposedProcedureStatusSave($motion);
@@ -554,7 +555,9 @@ trait MotionActionsTrait
             ]);
             $response['proposalStr'] = $motion->getFormattedProposalStatus(true);
 
-            if ($motion->id !== $originalMotionId) {
+            if ($motion->proposalStatus === IMotion::STATUS_MODIFIED_ACCEPTED && $originalProposalStatus !== $motion->proposalStatus) {
+                $response['redirectToUrl'] = UrlHelper::createMotionUrl($motion, 'edit-proposed-change');
+            } elseif ($motion->id !== $originalMotionId) {
                 // This can happen if a plugin enforces the creation of a new motion when saving
                 $response['redirectToUrl'] = UrlHelper::createMotionUrl($motion, 'view');
             }
@@ -649,14 +652,16 @@ trait MotionActionsTrait
 
         if ($this->getHttpRequest()->post('save', null) !== null) {
             $form->save($this->getHttpRequest()->post(), $_FILES);
-            $msgSuccess = \Yii::t('base', 'saved');
+            $this->getHttpSession()->setFlash('success', \Yii::t('base', 'saved'));
 
             if ($motion->proposalUserStatus !== null) {
-                $msgAlert = \Yii::t('amend', 'proposal_user_change_reset');
+                $this->getHttpSession()->setFlash('info', \Yii::t('amend', 'proposal_user_change_reset'));
             }
             $motion->proposalUserStatus = null;
             $motion->save();
             $motion->flushCacheItems(['procedure']);
+
+            return new RedirectResponse(UrlHelper::createMotionUrl($motion, 'view'));
         }
 
         return new HtmlResponse($this->render('edit_proposed_change', [
@@ -665,5 +670,40 @@ trait MotionActionsTrait
             'motion'     => $motion,
             'form'       => $form,
         ]));
+    }
+
+    public function actionSaveEditorial(string $motionSlug, int $sectionId): ResponseInterface
+    {
+        $motion = $this->consultation->getMotion($motionSlug);
+        if (!$motion) {
+            return new RestApiExceptionResponse(404, 'Motion not found');
+        }
+        if (!User::havePrivilege($this->consultation, Privileges::PRIVILEGE_CHANGE_EDITORIAL, PrivilegeQueryContext::motion($motion))) {
+            return new RestApiExceptionResponse(403, 'Not permitted to change the editorial');
+        }
+
+        $section = null;
+        foreach ($motion->getActiveSections(ISectionType::TYPE_TEXT_EDITORIAL) as $searchSection) {
+            if ($searchSection->sectionId === $sectionId) {
+                $section = $searchSection;
+            }
+        }
+        if (!$section) {
+            return new RestApiExceptionResponse(404, 'Section not found');
+        }
+        /** @var TextEditorial $sectionType */
+        $sectionType = $section->getSectionType();
+        $sectionType->setEditorialData(
+            $this->getPostValue('data'),
+            $this->getPostValue('author'),
+            $this->getPostValue('updateDate') ? new \DateTime() : $sectionType->getSectionMetadata()['lastUpdate']
+        );
+        $section->save();
+
+        return new JsonResponse([
+            'success' => true,
+            'html' => $section->getData(),
+            'metadataFormatted' => $sectionType->getFormattedSectionMetadata(true),
+        ]);
     }
 }

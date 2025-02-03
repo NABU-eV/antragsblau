@@ -8,7 +8,7 @@ use app\components\{HTMLTools, Tools, UrlHelper};
 use app\models\db\{Consultation, ConsultationLog, ConsultationMotionType, ConsultationSettingsTag, Motion, MotionSupporter, User};
 use app\models\exceptions\FormError;
 use app\models\events\MotionEvent;
-use app\models\forms\{MotionEditForm, MotionMover};
+use app\models\forms\{MotionDeepCopy, MotionEditForm, MotionMover};
 use app\models\sectionTypes\ISectionType;
 use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
 
@@ -83,7 +83,7 @@ class MotionController extends AdminBase
         }
 
         foreach ($motion->getInitiators() as $initiator) {
-            $initiator->userId = ($user ? $user->id : null);
+            $initiator->userId = $user?->id;
             $initiator->save();
             $initiator->refresh();
         }
@@ -120,7 +120,6 @@ class MotionController extends AdminBase
     {
         $consultation = $this->consultation;
 
-        /** @var Motion $motion */
         $motion = $consultation->getMotion($motionId);
         if (!$motion) {
             return new RedirectResponse(UrlHelper::createUrl('admin/motion-list/index'));
@@ -160,8 +159,8 @@ class MotionController extends AdminBase
             $modat = $post['motion'];
 
             $sectionTypes = [];
-            foreach ($motion->getActiveSections() as $section) {
-                $sectionTypes[$section->sectionId] = $section->getSettings()->type;
+            foreach ($motion->getMyMotionType()->motionSections as $section) {
+                $sectionTypes[$section->id] = $section->type;
             }
 
             try {
@@ -214,12 +213,12 @@ class MotionController extends AdminBase
 
             if (intval($modat['motionType']) !== $motion->motionTypeId) {
                 try {
-                    /** @var ConsultationMotionType $newType */
                     $newType = ConsultationMotionType::findOne($modat['motionType']);
                     if (!$newType || $newType->consultationId !== $motion->consultationId) {
                         throw new FormError('The new motion type was not found');
                     }
-                    $motion->setMotionType($newType);
+                    $sectionMapping = MotionDeepCopy::getMotionSectionMapping($motion->getMyMotionType(), $newType, []);
+                    $motion->setMotionType($newType, $sectionMapping);
                 } catch (FormError $e) {
                     $this->getHttpSession()->setFlash('error', $e->getMessage());
                 }
@@ -227,7 +226,7 @@ class MotionController extends AdminBase
 
             $motion->title        = $modat['title'];
             $motion->noteInternal = $modat['noteInternal'];
-            $motion->agendaItemId = (isset($modat['agendaItemId']) ? intval($modat['agendaItemId']) : null);
+            $motion->agendaItemId = (isset($modat['agendaItemId']) && $modat['agendaItemId'] > 0 ? intval($modat['agendaItemId']) : null);
             $motion->nonAmendable = (isset($modat['nonAmendable']) ? 1 : 0);
             $motion->notCommentable = (isset($modat['notCommentable']) ? 1 : 0);
 
@@ -277,7 +276,9 @@ class MotionController extends AdminBase
                 $motion->datePublication = null;
             }
 
-            if ($modat['parentMotionId'] && intval($modat['parentMotionId']) !== $motion->id &&
+            if ($modat['parentMotionId'] && intval($modat['parentMotionId']) === $motion->parentMotionId) {
+                // Just leave it untouched - skip check in case it's from a different consultation
+            } elseif ($modat['parentMotionId'] && intval($modat['parentMotionId']) !== $motion->id &&
                 $consultation->getMotion($modat['parentMotionId'])) {
                 $motion->parentMotionId = intval($modat['parentMotionId']);
             } else {
@@ -315,7 +316,6 @@ class MotionController extends AdminBase
 
     public function actionMove(string $motionId): ResponseInterface
     {
-        /** @var Motion $motion */
         $motion = $this->consultation->getMotion($motionId);
         if (!$motion) {
             return new RedirectResponse(UrlHelper::createUrl('admin/motion-list/index'));
@@ -347,7 +347,6 @@ class MotionController extends AdminBase
 
     public function actionMoveCheck(string $motionId, string $checkType): ResponseInterface
     {
-        /** @var Motion $motion */
         $motion = $this->consultation->getMotion($motionId);
         if (!$motion) {
             return new RedirectResponse(UrlHelper::createUrl('admin/motion-list/index'));

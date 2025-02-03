@@ -2,6 +2,7 @@
 
 use app\components\HTMLTools;
 use app\models\db\ConsultationMotionType;
+use app\models\policies\IPolicy;
 use app\models\settings\InitiatorForm;
 use app\models\supportTypes\{CollectBeforePublish, SupportBase};
 use yii\helpers\Html;
@@ -13,11 +14,16 @@ use yii\helpers\Html;
 $motionSettings    = $motionType->getMotionSupportTypeClass()->getSettingsObj();
 $amendmentSettings = $motionType->getAmendmentSupportTypeClass()->getSettingsObj();
 
+$policies = [];
+foreach (IPolicy::getPolicies() as $policy) {
+    $policies[$policy::getPolicyID()] = $policy::getPolicyName();
+}
+
 $sameInitiatorSettingsForAmendments = (json_encode($motionSettings) === json_encode($amendmentSettings));
 ?>
-<section class="motionSupporters hideForAmendmentsOnly" id="motionSupportersForm">
-    <h2 class="h3"><?= Yii::t('admin', 'motion_type_initiator') ?></h2>
-
+<section class="motionSupporters hideForAmendmentsOnly" id="motionSupportersForm" aria-labelledby="motionSupportersFormTitle">
+    <h2 class="green" id="motionSupportersFormTitle"><?= Yii::t('admin', 'motion_type_initiator') ?></h2>
+    <div class="content">
     <div class="stdTwoCols">
         <label class="leftColumn" for="typeSupportType">
             <?= Yii::t('admin', 'motion_type_supp_form') ?>:
@@ -57,7 +63,55 @@ $sameInitiatorSettingsForAmendments = (json_encode($motionSettings) === json_enc
                     echo Yii::t('admin', 'motion_type_person_orga');
                     ?>
                 </label>
+                <label class="initiatorSetPermissions">
+                    <?php
+                    $isPermSet = (!is_a($motionSettings->getInitiatorPersonPolicy($motionType->getConsultation()),  \app\models\policies\All::class) ||
+                                  !is_a($motionSettings->getInitiatorOrganizationPolicy($motionType->getConsultation()),  \app\models\policies\All::class));
+                    echo Html::checkbox('type[initiatorSetPermissions]', $isPermSet, ['class' => 'hidden']);
+                    ?>
+                    <span class="btn btn-link">
+                        <span class="glyphicon glyphicon-chevron-up active" aria-hidden="true"></span>
+                        <span class="glyphicon glyphicon-chevron-down inactive" aria-hidden="true"></span>
+                        <?= Yii::t('admin', 'motion_type_person_restrict') ?>
+                    </span>
+                </label>
             </div>
+        </div>
+    </div>
+
+    <div class="stdTwoCols" data-visibility="initiatorSetPersonPermissions">
+        <label class="leftColumn" for="typeInitiatorPersonPolicy">
+            <?= Yii::t('admin', 'motion_type_policy_person') ?>:
+        </label>
+        <div class="rightColumn policyWidget policyWidgetPerson">
+            <?php
+            $currentPolicy = $motionSettings->getInitiatorPersonPolicy($motionType->getConsultation());
+            echo Html::dropDownList(
+                'type[initiatorPersonPolicy][id]',
+                $currentPolicy::getPolicyID(),
+                $policies,
+                ['id' => 'typeInitiatorPersonPolicy', 'class' => 'stdDropdown policySelect']
+            );
+            echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typeInitiatorPersonGroups', 'formName' => 'type[initiatorPersonPolicy]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
+            ?>
+        </div>
+    </div>
+
+    <div class="stdTwoCols" data-visibility="initiatorSetOrgaPermissions">
+        <label class="leftColumn" for="typeInitiatorOrgaPolicy">
+            <?= Yii::t('admin', 'motion_type_policy_orga') ?>:
+        </label>
+        <div class="rightColumn policyWidget policyWidgetOrga">
+            <?php
+            $currentPolicy = $motionSettings->getInitiatorOrganizationPolicy($motionType->getConsultation());
+            echo Html::dropDownList(
+                'type[initiatorOrgaPolicy][id]',
+                $currentPolicy::getPolicyID(),
+                $policies,
+                ['id' => 'typeInitiatorOrgaPolicy', 'class' => 'stdDropdown policySelect']
+            );
+            echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typeInitiatorOrgaGroups', 'formName' => 'type[initiatorOrgaPolicy]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
+            ?>
         </div>
     </div>
 
@@ -170,7 +224,7 @@ $sameInitiatorSettingsForAmendments = (json_encode($motionSettings) === json_enc
         <label class="leftColumn" for="typeMinSupporters">
             <?= Yii::t('admin', 'motion_type_supp_min') ?>:
         </label>
-        <div class="col-md-2">
+        <div class="rightColumn">
             <input type="hidden" name="motionInitiatorSettingFields[]" value="minSupporters">
             <input type="number" name="motionInitiatorSettings[minSupporters]" class="form-control" id="typeMinSupporters"
                    value="<?= Html::encode($motionSettings->minSupporters) ?>">
@@ -264,12 +318,13 @@ $sameInitiatorSettingsForAmendments = (json_encode($motionSettings) === json_enc
             ?>
         </div>
     </div>
+    </div>
 </section>
 
 
 <section class="amendmentSupporters" id="amendmentSupportersForm">
-    <h2 class="h3"><?= Yii::t('admin', 'motion_type_initiator_amend') ?></h2>
-
+    <h2 class="green"><?= Yii::t('admin', 'motion_type_initiator_amend') ?></h2>
+    <div class="content">
     <div class="stdTwoCols">
         <label class="leftColumn" for="typeSupportTypeAmendment">
             <?= Yii::t('admin', 'motion_type_supp_form') ?>:
@@ -309,7 +364,55 @@ $sameInitiatorSettingsForAmendments = (json_encode($motionSettings) === json_enc
                     echo Yii::t('admin', 'motion_type_person_orga');
                     ?>
                 </label>
+                <label class="initiatorSetPermissions">
+                    <?php
+                    $isPermSet = (!is_a($amendmentSettings->getInitiatorPersonPolicy($motionType->getConsultation()),  \app\models\policies\All::class) ||
+                                  !is_a($amendmentSettings->getInitiatorOrganizationPolicy($motionType->getConsultation()),  \app\models\policies\All::class));
+                    echo Html::checkbox('type[amendmentInitiatorSetPermissions]', $isPermSet, ['class' => 'hidden']);
+                    ?>
+                    <span class="btn btn-link">
+                        <span class="glyphicon glyphicon-chevron-up active" aria-hidden="true"></span>
+                        <span class="glyphicon glyphicon-chevron-down inactive" aria-hidden="true"></span>
+                        <?= Yii::t('admin', 'motion_type_person_restrict') ?>
+                    </span>
+                </label>
             </div>
+        </div>
+    </div>
+
+    <div class="stdTwoCols" data-visibility="initiatorSetPersonPermissions">
+        <label class="leftColumn" for="typeAmendmentInitiatorPersonPolicy">
+            <?= Yii::t('admin', 'motion_type_policy_person') ?>:
+        </label>
+        <div class="rightColumn policyWidget policyWidgetPerson">
+            <?php
+            $currentPolicy = $amendmentSettings->getInitiatorPersonPolicy($motionType->getConsultation());
+            echo Html::dropDownList(
+                'type[amendmentInitiatorPersonPolicy][id]',
+                $currentPolicy::getPolicyID(),
+                $policies,
+                ['id' => 'typeAmendmentInitiatorPersonPolicy', 'class' => 'stdDropdown policySelect']
+            );
+            echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typeAmendmentInitiatorPersonGroups', 'formName' => 'type[amendmentInitiatorPersonPolicy]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
+            ?>
+        </div>
+    </div>
+
+    <div class="stdTwoCols" data-visibility="initiatorSetOrgaPermissions">
+        <label class="leftColumn" for="typeAmendmentInitiatorOrgaPolicy">
+            <?= Yii::t('admin', 'motion_type_policy_orga') ?>:
+        </label>
+        <div class="rightColumn policyWidget policyWidgetOrga">
+            <?php
+            $currentPolicy = $amendmentSettings->getInitiatorOrganizationPolicy($motionType->getConsultation());
+            echo Html::dropDownList(
+                'type[amendmentInitiatorOrgaPolicy][id]',
+                $currentPolicy::getPolicyID(),
+                $policies,
+                ['id' => 'typeAmendmentInitiatorOrgaPolicy', 'class' => 'stdDropdown policySelect']
+            );
+            echo $this->render('@app/views/shared/usergroup_selector', ['id' => 'typeAmendmentInitiatorOrgaGroups', 'formName' => 'type[amendmentInitiatorOrgaPolicy]', 'consultation' => $motionType->getConsultation(), 'currentPolicy' => $currentPolicy]);
+            ?>
         </div>
     </div>
 
@@ -501,5 +604,6 @@ $sameInitiatorSettingsForAmendments = (json_encode($motionSettings) === json_enc
             );
             ?>
         </div>
+    </div>
     </div>
 </section>

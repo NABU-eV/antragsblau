@@ -22,14 +22,14 @@
   .date {
     color: #757676;
     display: block;
+    position: absolute; // no float, otherwise height gets recalculated wrong when sorting agenda items
+    margin: 0;
     @media (min-width: $screenMinWith) {
       margin-left: 20px;
     }
     @media (max-width: $screenMinWith - 1) {
       margin-left: 12px;
     }
-    position: absolute; // no float, otherwise height gets recalculated wrong when sorting agenda items
-    margin: 0;
     @media (max-width: $screen-sm-max) {
       position: relative;
       top: 0;
@@ -227,6 +227,11 @@
       }
     }
   }
+  .privateCommentsIndicator {
+    float: left;
+    margin-left: -45px;
+    margin-top: 1px;
+  }
 }
 
 .motionListBelowAgenda {
@@ -283,20 +288,20 @@
     }
   }
   h4.amendments {
-    @media screen and (min-width: 600px) {
-      margin-left: $homeAgendaTitlePrefixWidth + 5px;
-    }
     margin-top: 10px;
     margin-bottom: 5px;
     font-family: $headingFont;
+    font-weight: bold;
+    color: $motionListAmendmentColor;
     @if ($font-size-base < 16) {
       font-size: 14px;
     } @else {
       font-size: inherit;
       line-height: inherit;
     }
-    font-weight: bold;
-    color: $motionListAmendmentColor;
+    @media screen and (min-width: 600px) {
+      margin-left: $homeAgendaTitlePrefixWidth + 5px;
+    }
   }
 
   .privateCommentsIndicator {
@@ -400,13 +405,13 @@ $agendaMarginPerLevel: 50px;
 
   li.agendaItem {
     border: solid 1px transparent; // Otherwise: strange behavior when moving items
+    position: relative;
     @media (min-width: $screenMinWith) {
       padding-left: 20px;
     }
     @media (max-width: $screenMinWith - 1) {
       padding-left: 16px;
     }
-    position: relative;
 
     .delAgendaItem, .delAgendaItem:link, .delAgendaItem:visited {
       color: $colorDelLink;
@@ -743,12 +748,11 @@ $agendaMarginPerLevel: 50px;
 .motionListFilter {
   .tagList {
     text-align: center;
+    margin-bottom: 15px;
 
     .btn {
       margin: 2px 4px;
     }
-
-    margin-bottom: 15px;
   }
 
   .searchBar {
@@ -924,6 +928,9 @@ $agendaMarginPerLevel: 50px;
     .initiatorCol {
       width: 35%;
     }
+    .dateCol {
+      width: 15%;
+    }
     .unscreened {
       .titleCol {
         .pdfLink {
@@ -945,6 +952,37 @@ $agendaMarginPerLevel: 50px;
   }
 }
 
+.homeTagList {
+  ol {
+    list-style: none;
+    margin: 15px 0;
+    padding: 0;
+    > li {
+      margin: 0 0 15px 0;
+      padding: 0;
+      clear: both;
+    }
+  }
+  .tagLink {
+    font-size: 1.3em;
+  }
+  .info {
+    padding-left: 24px;
+    color: gray;
+    float: right;
+  }
+}
+
+.tagSelectToolbar {
+  margin-bottom: 20px;
+  .selectHolder {
+    text-align: right;
+  }
+  select {
+    display: inline-block;
+    width: auto;
+  }
+}
 
 .consultationPhasesWizard {
   margin-bottom: 40px;

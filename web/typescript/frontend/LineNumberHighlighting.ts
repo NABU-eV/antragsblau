@@ -3,17 +3,17 @@ export class LineNumberHighlighting {
         let $panel = $(".gotoLineNumerPanel"),
             $lineInput = $panel.find("input[name=lineNumber]"),
             panelIsOpen = false;
-        window.addEventListener('keypress', (ev) => {
-            if (!panelIsOpen && ev.charCode >= 48 && ev.charCode <= 57) {
+        window.addEventListener('keydown', (ev) => {
+            if (!panelIsOpen && ev.key >= '0' && ev.key <= '9') {
                 let $target = $(ev.target);
-                if ($target.is('input, textarea, div.texteditor') || $target.parents('input, textarea, div.texteditor').length > 0) {
+                if ($target.is('input, textarea, div.texteditor, .cke_editable') || $target.parents('input, textarea, div.texteditor, .cke_editable').length > 0) {
                     // Typing in an input field, like comments
                     return;
                 }
 
                 $panel.addClass("active");
                 panelIsOpen = true;
-                $lineInput.focus();
+                $lineInput.trigger("focus");
                 window.setTimeout(() => {
                     $lineInput.val(ev.key);
                 }, 1);

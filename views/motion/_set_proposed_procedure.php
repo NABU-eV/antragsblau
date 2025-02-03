@@ -8,13 +8,14 @@
  */
 
 use app\models\settings\Privileges;
-use app\components\{HTMLTools, Tools, UrlHelper};
+use app\components\{HTMLTools, IMotionStatusFilter, Tools, UrlHelper};
 use app\models\db\{IAdminComment, Motion, User};
 use yii\helpers\Html;
 
 $saveUrl = UrlHelper::createMotionUrl($motion, 'save-proposal-status');
 echo Html::beginForm($saveUrl, 'POST', [
     'id'                       => 'proposedChanges',
+    'class'                    => 'version' . $motion->version,
     'data-antragsgruen-widget' => 'backend/ChangeProposedProcedure',
     'data-context'             => $context,
 ]);
@@ -280,7 +281,8 @@ $voting = $motion->getVotingData();
     <label class="headingLabel"><?= Yii::t('amend', 'proposal_obsoleted_by') ?>...</label>
     <?php
     $options = ['-'];
-    foreach ($consultation->getVisibleIMotionsSorted(false) as $otherMotion) {
+    $filter = IMotionStatusFilter::onlyUserVisible($consultation, false);
+    foreach ($filter->getFilteredConsultationIMotionsSorted() as $otherMotion) {
         if ($otherMotion->id === $motion->id) {
             continue;
         }
@@ -341,19 +343,19 @@ $voting = $motion->getVotingData();
 </section>
 <section class="notifyProposerSection hidden">
     <h3><?= Yii::t('amend', 'proposal_notify_text') ?></h3>
-    <div class="row proposalFrom">
+    <div class="proposalFrom">
         <?php
         $replyTo = \app\components\mail\Tools::getDefaultReplyTo($motion, $consultation, User::getCurrentUser());
         $fromName = \app\components\mail\Tools::getDefaultMailFromName($consultation);
         $placeholderReplyTo = Yii::t('amend', 'proposal_notify_replyto') . ': ' . $replyTo;
         $placeholderName = Yii::t('amend', 'proposal_notify_name') . ': ' . $fromName;
         ?>
-        <div class="col-md-6">
+        <div>
             <input type="text" name="proposalNotificationFrom" id="proposalNotificationFrom" class="form-control"
                    title="<?= Yii::t('amend', 'proposal_notify_name') ?>"
                    placeholder="<?= Html::encode($placeholderName) ?>">
         </div>
-        <div class="col-md-6">
+        <div>
             <input type="text" name="proposalNotificationReply" id="proposalNotificationReply" class="form-control"
                    title="<?= Yii::t('amend', 'proposal_notify_replyto') ?>"
                    placeholder="<?= Html::encode($placeholderReplyTo) ?>">
@@ -384,7 +386,7 @@ $voting = $motion->getVotingData();
     </div>
 </section>
 <section class="saving showIfChanged">
-    <button class="btn btn-default btn-sm">
+    <button class="btn btn-primary btn-sm">
         <?= Yii::t('amend', 'proposal_save_changes') ?>
     </button>
 </section>

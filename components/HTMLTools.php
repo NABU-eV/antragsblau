@@ -23,18 +23,6 @@ class HTMLTools
         return strlen($str) > 1000;
     }
 
-    /*
-     * Required by HTML Purifier to handle Umlaut domains
-     */
-    public static function loadNetIdna2(): void
-    {
-        $dir  = __DIR__ . DIRECTORY_SEPARATOR . 'Net_IDNA2-0.1.1' . DIRECTORY_SEPARATOR . 'Net' . DIRECTORY_SEPARATOR;
-        $dir2 = $dir . 'IDNA2' . DIRECTORY_SEPARATOR;
-        @require_once $dir2 . 'Exception.php';
-        @require_once $dir2 . 'Exception' . DIRECTORY_SEPARATOR . 'Nameprep.php';
-        @require_once $dir . 'IDNA2.php';
-    }
-
     public static function purify(\HTMLPurifier_Config $config, string $html): string {
         /** @var \HTMLPurifier_HTMLDefinition $def */
         $def = $config->getHTMLDefinition(true);
@@ -101,7 +89,6 @@ class HTMLTools
             return \Yii::$app->getCache()->get($cacheKey);
         }
 
-        self::loadNetIdna2();
         $configInstance = \HTMLPurifier_Config::create([
             'HTML.Doctype'                            => 'HTML 4.01 Transitional',
             'HTML.AllowedElements'                    => null,
@@ -157,7 +144,7 @@ class HTMLTools
         $dom = self::html2DOM($html);
 
         $hasChanged = false;
-        /** @var \DOMElement $wrapP */
+        /** @var \DOMElement|null $wrapP */
         $wrapP = null;
         for ($i = 0; $i < $dom->childNodes->length; $i++) {
             $childNode = $dom->childNodes->item($i);
@@ -248,7 +235,6 @@ class HTMLTools
 
         $html = str_replace('<p></p>', '<p>###EMPTY###</p>', $html);
 
-        self::loadNetIdna2();
         $configInstance = \HTMLPurifier_Config::create([
             'HTML.Doctype'                            => 'HTML 4.01 Transitional',
             'HTML.AllowedElements'                    => implode(',', $allowedTags),
@@ -396,7 +382,7 @@ class HTMLTools
         if ($element->nodeName === 'ol' || $element->nodeName === 'ul') {
             $liCount          = 0;
             $start = $element->getAttribute('start');
-            if ($start !== null && $start > 0) {
+            if ($start > 0) {
                 $liCount = intval($start) - 1;
             }
             $formatting = self::OL_DECIMAL_DOT;
@@ -467,7 +453,7 @@ class HTMLTools
         $lino = 0;
         if ($element->nodeName === 'ol') {
             $start = $element->getAttribute('start');
-            if ($start !== null && $start > 0) {
+            if ($start > 0) {
                 $lino = intval($start) - 1;
             }
         }
@@ -633,26 +619,19 @@ class HTMLTools
      */
     public static function sectionSimpleHTML(string $html, bool $splitListItems = true): array
     {
-        $cacheFunc = 'sectionSimpleHTML2';
-        $cacheDeps = [$html, $splitListItems];
+        $cache = HashedStaticCache::getInstance('sectionSimpleHTML2', [$html, $splitListItems]);
 
-        $cache = HashedStaticCache::getCache($cacheFunc, $cacheDeps);
-        if ($cache !== false) {
-            return $cache;
-        }
-
-        $paragraphNoWithoutSplit = 0;
-        $body = self::html2DOM($html);
-        $result = self::sectionSimpleHTMLInt($body, $paragraphNoWithoutSplit, true, $splitListItems, '', '');
-        if ($splitListItems) {
-            for ($i = 0; $i < count($result); $i++) {
-                $result[$i]->paragraphWithLineSplit = $i;
+        return $cache->getCached(function () use ($html, $splitListItems) {
+            $paragraphNoWithoutSplit = 0;
+            $body = self::html2DOM($html);
+            $result = self::sectionSimpleHTMLInt($body, $paragraphNoWithoutSplit, true, $splitListItems, '', '');
+            if ($splitListItems) {
+                for ($i = 0; $i < count($result); $i++) {
+                    $result[$i]->paragraphWithLineSplit = $i;
+                }
             }
-        }
-
-        HashedStaticCache::setCache($cacheFunc, $cacheDeps, $result);
-
-        return $result;
+            return $result;
+        });
     }
 
     /*
@@ -948,7 +927,6 @@ class HTMLTools
     public static function getDomDebug(\DOMNode $node): array
     {
         if (is_a($node, \DOMElement::class)) {
-            /** @var \DOMNode $node */
             $nodeArr = [
                 'name'     => $node->nodeName,
                 'classes'  => '',

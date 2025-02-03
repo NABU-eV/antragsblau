@@ -30,6 +30,10 @@ class MotionController extends Base
     use MotionMergingTrait;
     use MotionExportTraits;
 
+    public const VIEW_ID_VIEW = 'view';
+    public const VIEW_ID_VIEW_CHANGES = 'view-changes';
+    public const VIEW_ID_VIEW_PDF = 'pdf';
+
     public function actionView(string $motionSlug, int $commentId = 0, ?string $procedureToken = null): HtmlResponse
     {
         $this->layout = 'column2';
@@ -272,10 +276,10 @@ class MotionController extends Base
             if (!$agendaItem) {
                 throw new Internal('Could not find agenda item');
             }
-            if (!$agendaItem->motionType) {
+            if (!$agendaItem->getMyMotionType()) {
                 throw new Internal('Agenda item does not have motions');
             }
-            $motionType = $agendaItem->motionType;
+            $motionType = $agendaItem->getMyMotionType();
         } elseif ($motionTypeId > 0) {
             $motionType = $this->consultation->getMotionType($motionTypeId);
             $agendaItem = null;
@@ -284,7 +288,7 @@ class MotionController extends Base
             if (!$motion) {
                 throw new Internal('Could not find referenced motion');
             }
-            $motionType = $motion->motionType;
+            $motionType = $motion->getMyMotionType();
             $agendaItem = $motion->agendaItem;
         } else {
             throw new Internal('Could not resolve motion type');
@@ -365,7 +369,7 @@ class MotionController extends Base
 
 
         if (count($form->supporters) === 0) {
-            $form->supporters[] = MotionSupporter::createInitiator($supportType, $iAmAdmin);
+            $form->supporters[] = MotionSupporter::createInitiator($this->consultation, $supportType, $iAmAdmin);
         }
 
         return new HtmlResponse($this->render(

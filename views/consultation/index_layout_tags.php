@@ -1,5 +1,6 @@
 <?php
 
+use app\models\sectionTypes\ISectionType;
 use app\views\consultation\LayoutHelper;
 use app\components\{MotionSorter, UrlHelper};
 use app\models\layoutHooks\Layout as LayoutHooks;
@@ -12,17 +13,74 @@ use yii\helpers\Html;
  * @var \app\models\settings\Layout $layout
  * @var IMotion[] $imotions
  * @var bool $isResolutionList
+ * @var bool $skipTitle
+ * @var ConsultationSettingsTag $selectedTag
  */
-$tags = $tagIds = [];
-$hasNoTagMotions = false;
+
 $invisibleStatuses = $consultation->getStatuses()->getInvisibleMotionStatuses();
-$privateMotionComments = MotionComment::getAllForUserAndConsultationByMotion($consultation, User::getCurrentUser(), MotionComment::STATUS_PRIVATE);
-$privateAmendmentComments = AmendmentComment::getAllForUserAndConsultationByMotion($consultation, User::getCurrentUser(), AmendmentComment::STATUS_PRIVATE);
+
+if ($consultation->getSettings()->homepageByTag && !isset($selectedTag)) {
+    $sortedTags = $consultation->getSortedTags(ConsultationSettingsTag::TYPE_PUBLIC_TOPIC);
+
+    echo '<section aria-labelledby="tagOverviewTitle" class="homeTagList">';
+    echo '<h2 class="green' . ($skipTitle ? ' hidden' : '') . '" id="tagOverviewTitle">' . ($isResolutionList ? Yii::t('con', 'resolutions') : Yii::t('con', 'All Motions')) . '</h2>';
+    echo '<div class="content">';
+
+    $list = '';
+    foreach ($consultation->getSortedTags(ConsultationSettingsTag::TYPE_PUBLIC_TOPIC) as $tag) {
+        list($imotions, $resolutions) = MotionSorter::getIMotionsAndResolutions($consultation->getMotionsOfTag($tag));
+        if ($isResolutionList) {
+            $toShowImotions = $resolutions;
+        } else {
+            $toShowImotions = $imotions;
+        }
+        $toShowImotions = array_values(array_filter($toShowImotions, function (IMotion $imotion) use ($invisibleStatuses): bool {
+            return MotionSorter::imotionIsVisibleOnHomePage($imotion, $invisibleStatuses);
+        }));
+
+        if (count($toShowImotions) === 0) {
+            continue;
+        }
+
+        $list .= '<li><a class="tagLink tagLink' . $tag->id . '" href="';
+        if ($isResolutionList) {
+            $list .= UrlHelper::createUrl(['/consultation/tags-resolutions', 'tagId' => $tag->id]);
+        } else {
+            $list .= UrlHelper::createUrl(['/consultation/tags-motions', 'tagId' => $tag->id]);
+        }
+        $list .= '"><span class="glyphicon glyphicon-chevron-right" aria-hidden="true"></span> ';
+        $list .= Html::encode($tag->title) . '</a>';
+        $list .= '<div class="info">';
+        if ($isResolutionList) {
+            $list .= (count($toShowImotions) === 1 ? Yii::t('motion', 'resolution_1') : str_replace('%x%', count($toShowImotions), Yii::t('motion', 'resolution_x')));
+        } else {
+            $list .= (count($toShowImotions) === 1 ? Yii::t('motion', 'motion_1') : str_replace('%x%', count($toShowImotions), Yii::t('motion', 'motion_x')));
+        }
+        $list .= '</div></li>' . "\n";
+    }
+    if ($list !== '') {
+        echo '<ol class="tagList">' . $list . '</ol>';
+    } else {
+        echo '<div class="noMotionsYet">' . ($isResolutionList ? Yii::t('con', 'no_resolutions_yet') : Yii::t('con', 'no_motions_yet')) . '</div>';
+    }
+    echo '</div></section>';
+
+    return;
+}
+
+/** @var array<int, array{name: string, motions: IMotion[]}> $tags */
+$tags = [];
+/** @var int[] $tagIds */
+$tagIds = [];
+$hasNoTagMotions = false;
 
 $layout->addOnLoadJS('$(\'[data-toggle="tooltip"]\').tooltip();');
 
 foreach ($imotions as $imotion) {
-    if (!MotionSorter::imotionIsVisibleOnHomePage($imotion, $invisibleStatuses)) {
+    if (
+        ($imotion->isResolution() && !MotionSorter::resolutionIsVisibleOnHomePage($imotion)) ||
+        (!$imotion->isResolution() && !MotionSorter::imotionIsVisibleOnHomePage($imotion, $invisibleStatuses))
+    ){
         continue;
     }
     if (count($imotion->getPublicTopicTags()) === 0) {
@@ -40,6 +98,12 @@ foreach ($imotions as $imotion) {
         }
     }
 }
+
+if (count($tags) === 0) {
+    echo '<div class="content"><div class="noMotionsYet">' . ($isResolutionList ? Yii::t('con', 'no_resolutions_yet') : Yii::t('con', 'no_motions_yet')) . '</div></div>';
+    return;
+}
+
 $sortedTags = $consultation->getSortedTags(ConsultationSettingsTag::TYPE_PUBLIC_TOPIC);
 foreach ($sortedTags as $tag) {
     if (isset($tags[$tag->id])) {
@@ -70,9 +134,24 @@ if (count($sortedTags) > 0 && $consultation->getSettings()->homepageTagsList) {
 
 foreach ($tagIds as $tagId) {
     $tag = $tags[$tagId];
+    $sortedIMotions = MotionSorter::getSortedIMotionsFlat($consultation, $tag['motions']);
+
+    $hasDateColumn = false;
+    foreach ($sortedIMotions as $imotion) {
+        if (is_a($imotion, Motion::class)) {
+            foreach ($imotion->getMyMotionType()->motionSections as $sectionType) {
+                if ($sectionType->type === ISectionType::TYPE_TEXT_EDITORIAL) {
+                    $hasDateColumn = true;
+                }
+            }
+        }
+    }
+
     $prefix = ($isResolutionList ? Yii::t('con', 'resolutions') . ': ' : '');
-    echo '<h3 class="green" id="tag_' . $tagId . '">' . $prefix . Html::encode($tag['name']) . '</h3>
-    <div class="content">
+    if (!$consultation->getSettings()->homepageByTag) {
+        echo '<h3 class="green" id="tag_' . $tagId . '">' . $prefix . Html::encode($tag['name']) . '</h3>';
+    }
+    echo '<div class="content">
     <table class="motionTable">
         <thead><tr>';
     if (!$consultation->getSettings()->hideTitlePrefix) {
@@ -83,11 +162,16 @@ foreach ($tagIds as $tagId) {
     if (!$isResolutionList) {
         echo '<th class="initiatorCol">' . Yii::t('motion', 'Initiator') . '</th>';
     }
+    if ($hasDateColumn) {
+        echo '<th class="dateCol">' . Yii::t('motion', 'last_update') . '</th>';
+    }
     echo '</tr></thead>';
-    $sortedIMotions = MotionSorter::getSortedIMotionsFlat($consultation, $tag['motions']);
     foreach ($sortedIMotions as $imotion) {
-        /** @var IMotion $imotion */
-        $classes = ['motion'];
+        if (is_a($imotion, Motion::class)) {
+            $classes = ['motion', 'motionRow' . $imotion->id];
+        } else {
+            $classes = ['motion', 'amendmentRow' . $imotion->id];
+        }
         if ($imotion->getMyMotionType()->getSettingsObj()->cssIcon) {
             $classes[] = $imotion->getMyMotionType()->getSettingsObj()->cssIcon;
         }
@@ -100,14 +184,13 @@ foreach ($tagIds as $tagId) {
         if ($imotion->isInScreeningProcess()) {
             $classes[] = 'unscreened';
         }
-        $privateComment = LayoutHelper::getPrivateCommentIndicator($imotion, $privateMotionComments, $privateAmendmentComments);
         echo '<tr class="' . implode(' ', $classes) . '">';
         if (!$consultation->getSettings()->hideTitlePrefix) {
-            echo '<td class="prefixCol">' . $privateComment . Html::encode($imotion->getFormattedTitlePrefix(LayoutHooks::CONTEXT_MOTION_LIST)) . '</td>';
+            echo '<td class="prefixCol"><span class="privateCommentHolder"></span>' . Html::encode($imotion->getFormattedTitlePrefix(LayoutHooks::CONTEXT_MOTION_LIST)) . '</td>';
         }
         echo '<td class="titleCol">';
         if ($consultation->getSettings()->hideTitlePrefix) {
-            echo $privateComment;
+            echo '<span class="privateCommentHolder"></span>';
         }
         echo '<div class="titleLink">';
         if (is_a($imotion, Amendment::class)) {
@@ -123,25 +206,9 @@ foreach ($tagIds as $tagId) {
                 ['class' => 'motionLink' . $imotion->id]
             );
         }
-        echo '</div><div class="pdflink">';
-        if ($imotion->getMyMotionType()->getPDFLayoutClass() !== null && $imotion->isVisible()) {
-            if (is_a($imotion, Amendment::class)) {
-                echo Html::a(
-                    Yii::t('motion', 'as_pdf'),
-                    UrlHelper::createAmendmentUrl($imotion, 'pdf'),
-                    ['class' => 'pdfLink']
-                );
-            } elseif (is_a($imotion, Motion::class)) {
-                echo Html::a(
-                    Yii::t('motion', 'as_pdf'),
-                    UrlHelper::createMotionUrl($imotion, 'pdf'),
-                    ['class' => 'pdfLink']
-                );
-            }
-        }
         echo '</div></td>';
         if (!$isResolutionList) {
-            echo '<td class="initiatorRow">';
+            echo '<td class="initiatorCol">';
             $initiators = [];
             foreach ($imotion->getInitiators() as $init) {
                 if ($init->personType === ISupporter::PERSON_NATURAL) {
@@ -151,6 +218,20 @@ foreach ($tagIds as $tagId) {
                 }
             }
             echo Html::encode(implode(', ', $initiators));
+            echo '</td>';
+        }
+        if ($hasDateColumn) {
+            echo '<td class="dateCol">';
+            foreach ((is_a($imotion, Motion::class) ? $imotion->sections : []) as $section) {
+                if ($section->getSettings()->type === ISectionType::TYPE_TEXT_EDITORIAL) {
+                    /** @var \app\models\sectionTypes\TextEditorial $type */
+                    $type = $section->getSectionType();
+                    $metadata = $type->getSectionMetadata();
+                    if ($metadata['lastUpdate']) {
+                        echo Html::encode(\app\components\Tools::formatMysqlDate($metadata['lastUpdate']->format('Y-m-d')));
+                    }
+                }
+            }
             echo '</td>';
         }
         echo '</tr>';

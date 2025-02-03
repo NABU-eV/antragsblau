@@ -2,6 +2,7 @@
 
 use app\components\HTMLTools;
 use app\models\db\ConsultationMotionType;
+use app\views\pdfLayouts\IPDFLayout;
 use yii\helpers\Html;
 
 /**
@@ -12,8 +13,8 @@ $supportSett = $motionType->getMotionSupportTypeClass()->getSettingsObj();
 
 ?>
 <section id="typePdfForm" aria-labelledby="typePdfFormLabel">
-    <h2 class="h3" id="typePdfFormLabel"><?= Yii::t('admin', 'motion_type_pdf_layout') ?></h2>
-
+    <h2 class="green" id="typePdfFormLabel"><?= Yii::t('admin', 'motion_type_pdf_layout') ?></h2>
+    <div class="content">
     <div class="stdTwoCols">
         <label class="leftColumn" for="pdfIntroduction">
             <?= Yii::t('admin', 'con_pdf_intro') ?>:
@@ -51,24 +52,35 @@ $supportSett = $motionType->getMotionSupportTypeClass()->getSettingsObj();
         </div>
     </div>
 
+    <?php
+    $params = \app\models\settings\AntragsgruenApp::getInstance();
+    if (($params->xelatexPath || $params->lualatexPath) && !$params->weasyprintPath) {
+        echo '<div class="alert alert-danger" role="alert"><p>';
+        echo Yii::t('admin', 'motion_type_latex_warning');
+        echo '</p></div>';
+    }
+    ?>
+
     <fieldset class="thumbnailedLayoutSelector">
         <legend class="sr-only"><?= Yii::t('admin', 'motion_type_pdf_layout') ?></legend>
         <?php
-        $currValue = ($motionType->texTemplateId ? $motionType->texTemplateId : 'php' . $motionType->pdfLayout);
-        foreach (\app\views\pdfLayouts\IPDFLayout::getAvailableClassesWithLatex() as $lId => $layout) {
-            echo '<label class="layout ' . $lId . '">';
-            echo Html::radio('pdfTemplate', $lId === $currValue, ['value' => $lId]);
+        $currValue = IPDFLayout::getPdfLayoutForMotionType($motionType);
+        foreach (IPDFLayout::getSelectablePdfLayouts() as $layout) {
+            echo '<label class="layout ' . $layout->getHtmlId() . '">';
+            echo Html::radio('pdfTemplate', $layout->getHtmlId() === $currValue->getHtmlId(), ['value' => $layout->getHtmlId()]);
             echo '<span>';
-            if ($layout['preview']) {
-                echo '<img src="' . Html::encode($layout['preview']) . '" ' .
-                    'alt="' . Html::encode($layout['title']) . '" ' .
-                    'title="' . Html::encode($layout['title']) . '"></span>';
-                echo '<span class="sr-only">' . Html::encode($layout['title']) . '</span>';
+            if ($layout->preview) {
+                echo '<img src="' . Html::encode($layout->preview) . '" ' .
+                    'alt="' . Html::encode($layout->title) . '" ' .
+                    'title="' . Html::encode($layout->title) . '">';
+                echo '<span class="sr-only">' . Html::encode($layout->title) . '</span>';
             } else {
-                echo '<span class="placeholder">' . Html::encode($layout['title']) . '</span>';
+                echo '<span class="placeholder">' . Html::encode($layout->title) . '</span>';
             }
+            echo '</span>';
             echo '</label>';
         }
         ?>
     </fieldset>
+    </div>
 </section>

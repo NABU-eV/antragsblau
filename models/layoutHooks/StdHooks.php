@@ -85,7 +85,7 @@ class StdHooks extends Hooks
     {
         $out             = '';
         $showBreadcrumbs = (!$this->consultation || !$this->consultation->site || $this->consultation->site->getSettings()->showBreadcrumbs);
-        if (is_array($this->layout->breadcrumbs) && $showBreadcrumbs) {
+        if (count($this->layout->breadcrumbs) > 0 && $showBreadcrumbs) {
             $out .= '<nav aria-label="' . \Yii::t('base', 'aria_breadcrumb') . '"><ol class="breadcrumb">';
             foreach ($this->layout->breadcrumbs as $link => $name) {
                 if ($link === '' || is_numeric($link)) {
@@ -303,7 +303,7 @@ class StdHooks extends Hooks
                 $pages = ConsultationText::getMenuEntries(Consultation::getCurrent()->site, $consultation);
                 foreach ($pages as $page) {
                     $options = ['class' => 'page' . $page->id, 'aria-label' => $page->title];
-                    $out     .= '<li>' . Html::a($page->title, $page->getUrl(), $options) . '</li>';
+                    $out     .= '<li>' . Html::a(Html::encode($page->title), $page->getUrl(), $options) . '</li>';
                 }
             }
 
@@ -312,9 +312,15 @@ class StdHooks extends Hooks
             }
 
             if (User::havePrivilege($consultation, Privileges::PRIVILEGE_ANY, PrivilegeQueryContext::anyRestriction())) {
-                $todo = AdminTodoItem::getConsultationTodoCount($consultation);
-                if ($todo > 0) {
-                    $adminUrl   = UrlHelper::createUrl('/consultation/todo');
+                $todo = AdminTodoItem::getConsultationTodoCount($consultation, true);
+                $adminUrl = UrlHelper::createUrl('/consultation/todo');
+                if ($todo === null) {
+                    $asyncLoad = UrlHelper::createUrl('/consultation/todo-count');
+                    $adminTitle = \Yii::t('base', 'menu_todo') . ' (###COUNT###)';
+                    $out .= '<li data-url="' . Html::encode($asyncLoad) . '" class="hidden" id="adminTodoLoader">';
+                    $out .= Html::a($adminTitle, $adminUrl, ['id' => 'adminTodo', 'aria-label' => $adminTitle]);
+                    $out .= '</li>';
+                } elseif ($todo > 0) {
                     $adminTitle = \Yii::t('base', 'menu_todo') . ' (' . $todo . ')';
                     $out        .= '<li>' . Html::a($adminTitle, $adminUrl, ['id' => 'adminTodo', 'aria-label' => $adminTitle]) . '</li>';
                 }
@@ -398,8 +404,13 @@ class StdHooks extends Hooks
         $out = '<footer class="footer" aria-label="' . \Yii::t('base', 'aria_footer') . '">';
 
         if (!defined('INSTALLING_MODE') || INSTALLING_MODE !== true) {
-            $legalLink   = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'legal']);
-            $privacyLink = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'privacy']);
+            if ($this->consultation) {
+                $legalLink   = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'legal', 'consultationPath' => $this->consultation->urlPath]);
+                $privacyLink = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'privacy', 'consultationPath' => $this->consultation->urlPath]);
+            } else {
+                $legalLink   = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'legal']);
+                $privacyLink = UrlHelper::createUrl(['/pages/show-page', 'pageSlug' => 'privacy']);
+            }
 
             $out .= '<a href="' . Html::encode($legalLink) . '" class="legal" id="legalLink">' .
                     \Yii::t('base', 'imprint') . '</a>

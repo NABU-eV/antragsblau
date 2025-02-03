@@ -1,7 +1,6 @@
 <?php
 
-use yii\helpers\Html;
-use yii\helpers\Url;
+use yii\helpers\{Html, Url};
 
 /**
  * @var yii\web\View $this
@@ -13,7 +12,7 @@ use yii\helpers\Url;
 $controller = $this->context;
 $layout = $controller->layoutParams;
 
-$this->title = \Yii::t('wizard', 'title');
+$this->title = Yii::t('wizard', 'title');
 $controller->layoutParams->addCSS('css/formwizard.css');
 $controller->layoutParams->addCSS('css/manager.css');
 $layout->addAMDModule('manager/CreateSite');

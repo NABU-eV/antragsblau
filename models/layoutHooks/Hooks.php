@@ -39,6 +39,11 @@ class Hooks
         return $before;
     }
 
+    public function squareLogoPath(?string $before): ?string
+    {
+        return $before;
+    }
+
     public function beforeContent(string $before): string
     {
         return $before;
@@ -117,12 +122,22 @@ class Hooks
         return $motionData;
     }
 
+    public function getMotionExportData(array $motionData, Motion $motion): array
+    {
+        return $motionData;
+    }
+
     public function getMotionFormattedAmendmentList(string $before, Motion $motion): string
     {
         return $before;
     }
 
     public function getAmendmentViewData(array $amendmentData, Amendment $amendment): array
+    {
+        return $amendmentData;
+    }
+
+    public function getAmendmentExportData(array $amendmentData, Amendment $amendment): array
     {
         return $amendmentData;
     }
@@ -163,6 +178,11 @@ class Hooks
     }
 
     public function getConsultationPreWelcome(string $before): string
+    {
+        return $before;
+    }
+
+    public function getConsultationWelcomeReplacer(?string $before): ?string
     {
         return $before;
     }

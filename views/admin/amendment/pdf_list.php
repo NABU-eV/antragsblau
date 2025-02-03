@@ -2,9 +2,10 @@
 
 /**
  * @var yii\web\View $this
- * @var \app\models\db\Consultation $consultation
- * @var bool $withdrawn
+ * @var array<array{motion: Motion, amendments: Amendment[]}> $amendments
  */
+
+use app\models\db\{Amendment, Motion};
 use app\components\UrlHelper;
 use yii\helpers\Html;
 
@@ -20,20 +21,16 @@ $params->addBreadcrumb(Yii::t('admin', 'amend_pdf_list'));
 echo '<h1>' . Yii::t('admin', 'amend_pdf_list') . '</h1>
    <div class="content">';
 
-$motions = $consultation->getVisibleIMotionsSorted($withdrawn);
-foreach ($motions as $motion) {
-    $amendments = $motion->getVisibleAmendmentsSorted($withdrawn);
-    if (count($amendments) > 0) {
-        echo '<h2>' . Html::encode($motion->getTitleWithPrefix()) . '</h2>';
-        echo '<ul>';
-        foreach ($amendments as $amendment) {
-            echo '<li>';
-            $url = UrlHelper::createAmendmentUrl($amendment, 'pdf');
-            echo Html::a($amendment->titlePrefix, $url, ['class' => 'amendment' . $amendment->id]);
-            echo '</li>';
-        }
-        echo '</ul>';
+foreach ($amendments as $data) {
+    echo '<h2>' . Html::encode($data['motion']->getTitleWithPrefix()) . '</h2>';
+    echo '<ul>';
+    foreach ($data['amendments'] as $amendment) {
+        echo '<li>';
+        $url = UrlHelper::createAmendmentUrl($amendment, 'pdf');
+        echo Html::a($amendment->titlePrefix, $url, ['class' => 'amendment' . $amendment->id]);
+        echo '</li>';
     }
+    echo '</ul>';
 }
 
 echo '</div>';

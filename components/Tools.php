@@ -7,7 +7,10 @@ namespace app\components;
 use app\models\db\Consultation;
 use app\models\settings\Consultation as ConsultationSettings;
 use app\models\exceptions\Internal;
+use app\views\pdfLayouts\IPdfWriter;
 use Doctrine\Common\Annotations\AnnotationReader;
+use setasign\Fpdi\FpdiException;
+use setasign\Fpdi\PdfParser\StreamReader;
 use Symfony\Component\PropertyInfo\Extractor\ReflectionExtractor;
 use Symfony\Component\Serializer\Encoder\JsonEncoder;
 use Symfony\Component\Serializer\Mapping\Factory\ClassMetadataFactory;
@@ -74,7 +77,7 @@ class Tools
         }
 
         return match (self::getCurrentDateLocale()) {
-            'de' => ConsultationSettings::DATE_FORMAT_DMY_DOT,
+            'de', 'me' => ConsultationSettings::DATE_FORMAT_DMY_DOT,
             'fr', 'ca' => ConsultationSettings::DATE_FORMAT_DMY_SLASH,
             'nl' => ConsultationSettings::DATE_FORMAT_DMY_DASH,
             default => ConsultationSettings::DATE_FORMAT_MDY_SLASH,
@@ -87,7 +90,7 @@ class Tools
             $locale = Tools::getCurrentDateLocale();
         }
 
-        if ($locale === 'de') {
+        if ($locale === 'de' || $locale === 'me') {
             $pattern = '/^(?<day>\\d{1,2})\.(?<month>\\d{1,2})\.(?<year>\\d{4}) ' .
                        '(?<hour>\\d{1,2})\:(?<minute>\\d{1,2})$/';
             if (preg_match($pattern, $time, $matches) && $matches['year'] > 1970) {
@@ -178,7 +181,7 @@ class Tools
             return '';
         }
 
-        if ($locale === 'de') {
+        if ($locale === 'de' || $locale === 'me') {
             return $matches['day'] . '.' . $matches['month'] . '.' . $matches['year'];
         } elseif ($locale === 'fr' || $locale === 'ca') {
             return $matches['day'] . '/' . $matches['month'] . '/' . $matches['year'];
@@ -200,7 +203,7 @@ class Tools
             $locale = Tools::getCurrentDateLocale();
         }
 
-        if ($locale === 'de') {
+        if ($locale === 'de' || $locale === 'me') {
             $pattern = '/^(?<day>\\d{1,2})\.(?<month>\\d{1,2})\.(?<year>\\d{4})$/';
             if (preg_match($pattern, $date, $matches)) {
                 return sprintf('%1$04d-%2$02d-%3$02d', $matches['year'], $matches['month'], $matches['day']);
@@ -242,7 +245,7 @@ class Tools
             return '';
         }
 
-        if ($locale === 'de') {
+        if ($locale === 'de' || $locale === 'me') {
             $date = $matches['day'] . '.' . $matches['month'] . '.' . $matches['year'] . ' ';
             $date .= $matches['hour'] . ':' . $matches['minute'];
 
@@ -278,7 +281,7 @@ class Tools
         }
 
         return match ($locale) {
-            'de' => $time->format('d.m.Y H:i'),
+            'de', 'me' => $time->format('d.m.Y H:i'),
             'fr', 'ca' => $time->format('d/m/Y H:i'),
             'en' => $time->format('m/d/Y H:i'),
             'nl' => $time->format('d-m-Y H:i'),
@@ -464,12 +467,37 @@ class Tools
 
     public static function getMaxUploadSize(): int
     {
-        $post_max_size = self::parsePhpSize(ini_get('post_max_size'));
-        $upload_size   = self::parsePhpSize(ini_get('upload_max_filesize'));
+        $post_max_size = self::parsePhpSize((string)ini_get('post_max_size'));
+        $upload_size   = self::parsePhpSize((string)ini_get('upload_max_filesize'));
         if ($upload_size < $post_max_size) {
             return $upload_size;
         } else {
             return $post_max_size;
+        }
+    }
+
+    /**
+     * @throws FpdiException
+     */
+    public static function appendPdfToPdf(IPdfWriter $pdf, string $toAppendData, ?string $bookmarkId = null, ?string $bookmarkName = null): void
+    {
+        $pageCount = $pdf->setSourceFile(StreamReader::createByString($toAppendData));
+
+        for ($pageNo = 1; $pageNo <= $pageCount; $pageNo++) {
+            $page = $pdf->ImportPage($pageNo);
+            $dim  = $pdf->getTemplatesize($page);
+            if (is_array($dim)) {
+                $pdf->AddPage($dim['width'] > $dim['height'] ? 'L' : 'P', [$dim['width'], $dim['height']], false);
+            } else {
+                $pdf->AddPage();
+            }
+
+            if ($pageNo === 1 && $bookmarkId !== null) {
+                $pdf->setDestination($bookmarkId, 0, '');
+                $pdf->Bookmark($bookmarkName, 0, 0, '', '', [128,0,0], -1, '#' . $bookmarkId);
+            }
+
+            $pdf->useTemplate($page);
         }
     }
 }

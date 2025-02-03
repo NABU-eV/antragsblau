@@ -3,7 +3,7 @@
 namespace app\components;
 
 use app\models\amendmentNumbering\ByLine;
-use app\models\db\{Amendment, Consultation, ConsultationAgendaItem, IMotion, Motion};
+use app\models\db\{Amendment, Consultation, ConsultationAgendaItem, IMotion, Motion, repostory\MotionRepository};
 
 class MotionSorter
 {
@@ -120,7 +120,7 @@ class MotionSorter
         $replacedInvisible[] = IMotion::STATUS_RESOLUTION_PRELIMINARY;
 
         if (is_a($imotion, Motion::class)) {
-            foreach ($imotion->getReplacedByMotionsWithinConsultation() as $replacedByMotion) {
+            foreach (MotionRepository::getReplacedByMotionsWithinConsultation($imotion) as $replacedByMotion) {
                 if (!in_array($replacedByMotion->status, $replacedInvisible)) {
                     // The motion to be checked is replaced by another motion that is visible
                     return false;
@@ -130,6 +130,16 @@ class MotionSorter
         return true;
     }
 
+    public static function resolutionIsVisibleOnHomePage(IMotion $motion): bool
+    {
+        if (!is_a($motion, Motion::class)) {
+            return false;
+        }
+        if (count(MotionRepository::getReplacedByMotionsWithinConsultation($motion)) > 0) {
+            return false;
+        }
+        return $motion->isResolution();
+    }
 
     /**
      * @param IMotion[] $motions
@@ -142,11 +152,11 @@ class MotionSorter
         /** @var array{string: array<IMotion>} $motionsNoPrefix */
         $motionsNoPrefix = [];
 
-        $inivisible   = $consultation->getStatuses()->getInvisibleMotionStatuses();
-        $inivisible[] = IMotion::STATUS_MODIFIED;
+        $invisible   = $consultation->getStatuses()->getInvisibleMotionStatuses();
+        $invisible[] = IMotion::STATUS_MODIFIED;
 
         foreach ($motions as $motion) {
-            if (!self::imotionIsVisibleOnHomePage($motion, $inivisible)) {
+            if (!self::imotionIsVisibleOnHomePage($motion, $invisible)) {
                 continue;
             }
 
@@ -193,10 +203,10 @@ class MotionSorter
             // @TODO A differenciation between motions and amendments will be necessary
         }
 
-        $statuses = $consultation->getStatuses()->getInvisibleMotionStatuses(false);
+        $statuses = $consultation->getStatuses()->getInvisibleMotionStatuses();
         $items = ConsultationAgendaItem::getSortedFromConsultation($consultation);
         foreach ($items as $agendaItem) {
-            $agendaMotions = $agendaItem->getVisibleIMotions();
+            $agendaMotions = $agendaItem->getMyIMotions(IMotionStatusFilter::onlyUserVisible($consultation, true));
             foreach ($agendaMotions as $agendaMotion) {
                 if (!in_array($agendaMotion->id, $motionIdsToBeSorted)) {
                     continue;
@@ -294,7 +304,7 @@ class MotionSorter
                     $motions[] = $amendment;
                 }
             } elseif ($mot->isResolution()) {
-                if (count($mot->getVisibleReplacedByMotions()) === 0) {
+                if (count(MotionRepository::getReplacedByMotionsWithinConsultation($mot)) === 0) {
                     $resolutions[] = $mot;
                 }
             } else {

@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace app\views\motion;
 
-use app\components\HashedStaticFileCache;
-use app\models\layoutHooks\Layout as LayoutHooks;
-use app\models\mergeAmendments\Init;
-use app\models\sectionTypes\TextSimple;
-use app\models\settings\{PrivilegeQueryContext, Privileges, VotingData, AntragsgruenApp};
-use app\components\latex\{Content, Exporter, Layout as LatexLayout};
-use app\components\Tools;
+use app\components\{HashedStaticCache, IMotionStatusFilter, Tools, UrlHelper};
+use app\components\html2pdf\{Content as HtmlToPdfContent, Html2PdfConverter};
+use app\components\latex\{Content as LatexContent, Exporter, Layout as LatexLayout};
 use app\models\db\{Amendment, AmendmentSection, ConsultationSettingsTag, IMotion, ISupporter, Motion, User};
+use app\models\layoutHooks\Layout as LayoutHooks;
 use app\models\LimitedSupporterList;
+use app\models\mergeAmendments\Init;
 use app\models\policies\IPolicy;
-use app\models\sectionTypes\ISectionType;
+use app\models\sectionTypes\{ISectionType, TextSimple};
+use app\models\settings\{AntragsgruenApp, Consultation, PrivilegeQueryContext, Privileges, VotingData};
 use app\models\supportTypes\SupportBase;
-use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
+use app\views\pdfLayouts\{IHtmlToPdfLayout, IPDFLayout, IPdfWriter};
+use setasign\Fpdi\PdfParser\PdfParserException;
 use yii\helpers\Html;
 
 class LayoutHelper
@@ -36,6 +36,20 @@ class LayoutHelper
         }
 
         return $privilege;
+    }
+
+    public static function getMotionBackLink(Motion $motion): string
+    {
+        $settings = $motion->getMyConsultation()->getSettings();
+        if ($settings->startLayoutType === Consultation::START_LAYOUT_TAGS && $settings->homepageByTag) {
+            if (count($motion->tags) > 0) {
+                return UrlHelper::createUrl(['/consultation/tags-motions', 'tagId' => $motion->tags[0]->id]);
+            } else {
+                return UrlHelper::homeUrl();
+            }
+        } else {
+            return UrlHelper::homeUrl();
+        }
     }
 
     /**
@@ -237,14 +251,18 @@ class LayoutHelper
      * @throws \app\models\exceptions\Internal
      * @throws \Exception
      */
-    public static function renderTeX(Motion $motion): Content
+    public static function renderTeX(Motion $motion): LatexContent
     {
-        $content                  = new Content();
+        $content                  = new LatexContent();
         $content->template        = $motion->getMyMotionType()->texTemplate->texContent;
         $content->lineLength      = $motion->getMyConsultation()->getSettings()->lineLength;
         $content->logoData        = $motion->getMyConsultation()->getPdfLogoData();
         $intro                    = explode("\n", $motion->getMyMotionType()->getSettingsObj()->pdfIntroduction);
         $content->introductionBig = $intro[0];
+        if (count($intro) > 1) {
+            array_shift($intro);
+            $content->introductionSmall = implode("\n", $intro);
+        }
         if ($motion->isResolution()) {
             $names                = $motion->getMyConsultation()->getStatuses()->getStatusNames();
             $content->titleRaw    = $motion->title;
@@ -256,10 +274,6 @@ class LayoutHelper
             $content->titlePrefix = $motion->getFormattedTitlePrefix();
             $content->titleLong   = $motion->getTitleWithPrefix();
             $content->title       = $motion->getTitleWithIntro();
-        }
-        if (count($intro) > 1) {
-            array_shift($intro);
-            $content->introductionSmall = implode("\n", $intro);
         }
         $initiators = [];
         foreach ($motion->getInitiators() as $init) {
@@ -698,24 +712,156 @@ class LayoutHelper
      */
     public static function createPdfLatex(Motion $motion): string
     {
-        $cache = HashedStaticFileCache::getCache($motion->getPdfCacheKey(), null);
-        if ($cache && !YII_DEBUG) {
-            return $cache;
+        $cache = HashedStaticCache::getInstance($motion->getPdfCacheKey(), null);
+        $cache->setIsBulky(true);
+        $cache->setIsSynchronized(true);
+
+        return $cache->getCached(function () use ($motion) {
+            $texTemplate = $motion->getMyMotionType()->texTemplate;
+
+            $layout             = new LatexLayout();
+            $layout->assetRoot  = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR;
+            $layout->pluginRoot = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR;
+            $layout->template   = $texTemplate->texLayout;
+            $layout->author     = $motion->getInitiatorsStr();
+            $layout->title      = $motion->getTitleWithPrefix();
+
+            $exporter = new Exporter($layout, AntragsgruenApp::getInstance());
+            $content  = LayoutHelper::renderTeX($motion);
+
+            return $exporter->createPDF([$content]);
+        });
+    }
+
+    /**
+     * @throws \app\models\exceptions\Internal
+     * @throws \Exception
+     */
+    public static function renderPdfContentFromHtml(Motion $motion): HtmlToPdfContent
+    {
+        $content = new HtmlToPdfContent();
+        $pdfLayoutDescription = IPDFLayout::getPdfLayoutForMotionType($motion->getMyMotionType());
+
+        $content->layout = (is_subclass_of($pdfLayoutDescription->className, IHtmlToPdfLayout::class) ? new $pdfLayoutDescription->className() : null);
+        $content->lineLength      = $motion->getMyConsultation()->getSettings()->lineLength;
+        $content->logoData        = $motion->getMyConsultation()->getPdfLogoData();
+        $intro                    = explode("\n", $motion->getMyMotionType()->getSettingsObj()->pdfIntroduction);
+        $content->introductionBig = $intro[0];
+        if (count($intro) > 1) {
+            array_shift($intro);
+            $content->introductionSmall = implode("\n", $intro);
         }
-        $texTemplate = $motion->getMyMotionType()->texTemplate;
+        if ($motion->isResolution()) {
+            $names                = $motion->getMyConsultation()->getStatuses()->getStatusNames();
+            $content->titleRaw    = $motion->title;
+            $content->titlePrefix = $names[$motion->status] . "\n";
+            $content->titleLong   = $names[$motion->status] . ': ' . $motion->getTitleWithIntro();
+            $content->title       = $motion->getTitleWithIntro();
+        } else {
+            $content->titleRaw    = $motion->title;
+            $content->titlePrefix = $motion->getFormattedTitlePrefix();
+            $content->titleLong   = $motion->getTitleWithPrefix();
+            $content->title       = $motion->getTitleWithIntro();
+        }
+        $initiators = [];
+        foreach ($motion->getInitiators() as $init) {
+            $initiators[] = $init->getNameWithResolutionDate(false);
+        }
+        $initiatorsStr            = implode(', ', $initiators);
+        $content->author          = $initiatorsStr;
+        $content->publicationDate = Tools::formatMysqlDate($motion->datePublication);
+        $content->typeName        = $motion->getMyMotionType()->titleSingular;
 
-        $layout             = new LatexLayout();
-        $layout->assetRoot  = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'assets' . DIRECTORY_SEPARATOR;
-        $layout->pluginRoot = \yii::$app->basePath . DIRECTORY_SEPARATOR . 'plugins' . DIRECTORY_SEPARATOR;
-        $layout->template   = $texTemplate->texLayout;
-        $layout->author     = $motion->getInitiatorsStr();
-        $layout->title      = $motion->getTitleWithPrefix();
+        if ($motion->agendaItem) {
+            $content->agendaItemName = $motion->agendaItem->title;
+        }
 
-        $exporter = new Exporter($layout, AntragsgruenApp::getInstance());
-        $content  = LayoutHelper::renderTeX($motion);
-        $pdf      = $exporter->createPDF([$content]);
-        HashedStaticFileCache::setCache($motion->getPdfCacheKey(), null, $pdf);
-        return $pdf;
+        foreach ($motion->getDataTable() as $key => $val) {
+            $content->motionDataTable .= '<tr>';
+            $content->motionDataTable .= '<th>' . nl2br(Html::encode($key)) . ':</th>';
+            $content->motionDataTable .= '<td>' . nl2br(Html::encode($val)) . '</td>';
+            $content->motionDataTable .= '</tr>';
+        }
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+            $ppSections = self::getVisibleProposedProcedureSections($motion, null);
+        }
+
+        if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && !self::showProposedProceduresInline($motion)) {
+            /** @var array<array{title: string, section: ISectionType}> $ppSections */
+            foreach ($ppSections as $ppSection) {
+                $ppSection['section']->setTitlePrefix($ppSection['title']);
+                $ppSection['section']->printAmendmentHtml2Pdf(false, $content);
+            }
+        }
+
+        foreach ($motion->getSortedSections(true) as $section) {
+            $shownPp = false;
+            if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+                /** @var array<array{title: string, section: TextSimple}> $ppSections */
+                foreach ($ppSections as $ppSection) {
+                    /** @var array{title: string, section: TextSimple} $ppSection */
+                    if ($ppSection['section']->getSectionId() === $section->sectionId) {
+                        $ppSection['section']->setDefaultToOnlyDiff(false);
+                        $ppSection['section']->printAmendmentHtml2Pdf($section->isLayoutRight(), $content);
+                        $shownPp = true;
+                    }
+                }
+            }
+            if (!$shownPp) {
+                $section->getSectionType()->printMotionHtml2Pdf($section->isLayoutRight(), $content, $motion->getMyConsultation());
+            }
+        }
+
+        $limitedSupporters = LimitedSupporterList::createFromIMotion($motion);
+        if (count($limitedSupporters->supporters) > 0) {
+            $content->textMain .= "<h2>" . Html::encode(\Yii::t('motion', 'supporters_heading')) . "</h2><br>";
+            $supps             = [];
+            foreach ($limitedSupporters->supporters as $supp) {
+                $supps[] = $supp->getNameWithOrga();
+            }
+            $content->textMain .= '<p>' . Html::encode(implode('; ', $supps)) . $limitedSupporters->truncatedToString(';') . '</p>';
+        }
+
+        return $content;
+    }
+
+    public static function createPdfFromHtml(Motion $motion): string
+    {
+        $cache = HashedStaticCache::getInstance($motion->getPdfCacheKey(), null);
+        $cache->setIsBulky(true);
+        $cache->setIsSynchronized(true);
+
+        return $cache->getCached(function () use ($motion) {
+            $exporter = new Html2PdfConverter(AntragsgruenApp::getInstance());
+            $content = self::renderPdfContentFromHtml($motion);
+
+            $pdfData = $exporter->createPDF($content);
+
+            foreach ($motion->getSortedSections(true) as $section) {
+                if ($section->getSettings()->type === ISectionType::TYPE_PDF_ATTACHMENT && $section->getData() !== '') {
+                    $pdf = new IPdfWriter();
+                    $pdf->SetCreator(\Yii::t('export', 'default_creator'));
+                    $pdf->SetAuthor(\Yii::t('export', 'default_creator'));
+                    $pdf->SetTitle($motion->getTitleWithPrefix());
+                    $pdf->SetSubject($motion->getTitleWithPrefix());
+                    $pdf->setPrintHeader(false);
+                    $pdf->setPrintFooter(false);
+
+                    Tools::appendPdfToPdf($pdf, $pdfData);
+                    try {
+                        Tools::appendPdfToPdf($pdf, $section->getData());
+                    } catch (PdfParserException $e) {
+                        $pdf->AddPage();
+                        $pdf->writeHTML('<font color="red">' . \Yii::t('export', 'pdf_err_parsing') . '</font>');
+                    }
+
+                    $pdfData = $pdf->Output('', 'S');
+                }
+            }
+
+            return $pdfData;
+        });
     }
 
     /*
@@ -835,8 +981,11 @@ class LayoutHelper
      */
     public static function printMotionWithEmbeddedAmendmentsToPdf(Init $form, IPDFLayout $pdfLayout, IPdfWriter $pdf): void
     {
+        $filter = IMotionStatusFilter::onlyUserVisible($form->motion->getMyConsultation(), false)
+                                     ->noAmendmentsIfMotionIsMoved();
+
         $amendmentsById = [];
-        foreach ($form->motion->getVisibleAmendments(false, false) as $amendment) {
+        foreach ($form->motion->getFilteredAmendments($filter) as $amendment) {
             $amendmentsById[$amendment->id] = $amendment;
         }
 
@@ -845,11 +994,11 @@ class LayoutHelper
         $pdf->SetFont($pdf->getMotionFont(null), '', $pdf->getMotionFontSize(null));
         $pdf->Ln(5);
         $amendmentsHtml = '<table border="1" cellpadding="5"><tr><td><h2>' . \Yii::t('export', 'amendments') . '</h2>';
-        foreach ($form->motion->getVisibleAmendments(false, false) as $amendment) {
+        foreach ($form->motion->getFilteredAmendments($filter) as $amendment) {
             $amendmentsHtml .= '<div><strong>' . Html::encode($amendment->getFormattedTitlePrefix()) . '</strong>: ' .
                                Html::encode($amendment->getInitiatorsStr()) . '</div>';
         }
-        if (count($form->motion->getVisibleAmendments(false, false)) === 0) {
+        if (count($form->motion->getFilteredAmendments($filter)) === 0) {
             $amendmentsHtml .= '<em>' . \Yii::t('export', 'amendments_none') . '</em>';
         }
         $amendmentsHtml .= '</td></tr></table>';
@@ -912,6 +1061,7 @@ class LayoutHelper
             $initiatorStr = \Yii::t('export', 'InitiatorMulti');
         }
         $initiatorStr .= ': ' . implode(', ', $initiators);
+        $doc->addReplace('/\{\{ANTRAGSGRUEN:AGENDA\}\}/siu', ($motion->getMyAgendaItem() ? $motion->getMyAgendaItem()->title : ''));
         $doc->addReplace('/\{\{ANTRAGSGRUEN:TITLE\}\}/siu', $motion->getTitleWithPrefix());
         $doc->addReplace('/\{\{ANTRAGSGRUEN:INITIATORS\}\}/siu', $initiatorStr);
         if ($motion->getMyMotionType()->getSettingsObj()->showProposalsInExports && $motion->proposalStatus !== null && $motion->isProposalPublic()) {

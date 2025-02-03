@@ -103,7 +103,7 @@ echo '<div class="content form-horizontal">';
         <div class="rightColumn">
             <?php
             $options = [];
-            foreach ($motion->motionType->getCompatibleMotionTypes() as $motionType) {
+            foreach ($motion->getMyMotionType()->getCompatibleMotionTypes([]) as $motionType) {
                 $options[$motionType->id] = $motionType->titleSingular;
             }
             $attrs = ['id' => 'motionType', 'class' => 'stdDropdown fullsize'];
@@ -117,7 +117,11 @@ echo '<div class="content form-horizontal">';
         <div class="rightColumn">
             <?php
             $options = ['-'];
-            foreach ($consultation->motions as $otherMotion) {
+            $selectableMotions = $consultation->motions;
+            if ($motion->replacedMotion && $motion->replacedMotion->consultationId !== $consultation->id) {
+                array_unshift($selectableMotions, $motion->replacedMotion);
+            }
+            foreach ($selectableMotions as $otherMotion) {
                 $title = $otherMotion->getTitleWithPrefix() .
                     ' (' . Yii::t('motion', 'version') . ' ' . $otherMotion->version . ')';
                 $options[$otherMotion->id] = $title;
@@ -182,7 +186,7 @@ if (count($consultation->agendaItems) > 0) {
     echo Yii::t('admin', 'motion_agenda_item');
     echo ':</label><div class="rightColumn">';
     $options    = ['id' => 'agendaItemId', 'class' => 'stdDropdown fullsize'];
-    $selections = [];
+    $selections = ['-'];
     foreach (ConsultationAgendaItem::getSortedFromConsultation($consultation) as $item) {
         $selections[$item->id] = $item->title;
     }

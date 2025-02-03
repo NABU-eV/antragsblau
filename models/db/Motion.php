@@ -2,15 +2,18 @@
 
 namespace app\models\db;
 
+use app\models\AdminTodoItem;
+use app\models\db\repostory\{ConsultationRepository, MotionRepository};
 use app\models\forms\MotionDeepCopy;
 use app\models\proposedProcedure\Agenda;
+use app\views\consultation\LayoutHelper;
 use app\models\settings\{PrivilegeQueryContext, Privileges, AntragsgruenApp, MotionSection as MotionSectionSettings};
 use app\models\notifications\{MotionProposedProcedure,
     MotionPublished,
     MotionSubmitted as MotionSubmittedNotification,
     MotionWithdrawn as MotionWithdrawnNotification,
     MotionEdited as MotionEditedNotification};
-use app\components\{HashedStaticFileCache, MotionSorter, RequestContext, RSSExporter, Tools, UrlHelper};
+use app\components\{HashedStaticCache, IMotionStatusFilter, MotionSorter, RequestContext, RSSExporter, Tools, UrlHelper};
 use app\models\exceptions\{FormError, Internal, NotAmendable, NotFound};
 use app\models\layoutHooks\Layout;
 use app\models\mergeAmendments\Draft;
@@ -110,6 +113,18 @@ class Motion extends IMotion implements IRSSItem
         return $result;
     }
 
+    public function link($name, $model, $extraColumns = []): void
+    {
+        parent::link($name, $model, $extraColumns);
+        $this->flushViewCache();
+    }
+
+    public function unlink($name, $model, $delete = false): void
+    {
+        parent::unlink($name, $model, $delete);
+        $this->flushViewCache();
+    }
+
     public function getComments(): ActiveQuery
     {
         return $this->hasMany(MotionComment::class, ['motionId' => 'id'])
@@ -193,11 +208,15 @@ class Motion extends IMotion implements IRSSItem
     {
         $sections = [];
         $hadNonPublicSections = false;
+        $foundSectionTypes = [];
         foreach ($this->sections as $section) {
             if (!$section->getSettings()) {
                 // Internal problem - maybe an accidentally deleted motion type
                 continue;
             }
+
+            $foundSectionTypes[] = $section->getSettings()->id;
+
             if ($filterType !== null && $section->getSettings()->type !== $filterType) {
                 continue;
             }
@@ -207,6 +226,15 @@ class Motion extends IMotion implements IRSSItem
             }
 
             $sections[] = $section;
+        }
+
+        foreach ($this->getTypeSections() as $typeSection) {
+            if (!in_array($typeSection->id, $foundSectionTypes) && $typeSection->requiresAutoCreationWhenMissing()) {
+                $emptySection = MotionSection::createEmpty($typeSection->id, $typeSection->getSettingsObj()->public, $this->id);
+                $emptySection->save();
+
+                $sections[] = $emptySection;
+            }
         }
 
         if ($showAdminSections && $hadNonPublicSections && !$this->iAmInitiator() &&
@@ -261,28 +289,6 @@ class Motion extends IMotion implements IRSSItem
             ->andWhere(Motion::tableName() . '.status != ' . Motion::STATUS_DELETED);
     }
 
-    /**
-     * @return Motion[]
-     */
-    public function getReplacedByMotionsWithinConsultation(): array
-    {
-        $motions = [];
-        if ($this->getMyConsultation()->hasPreloadedMotionData()) {
-            foreach ($this->getMyConsultation()->motions as $motion) {
-                if ($motion->parentMotionId === $this->id) {
-                    $motions[] = $motion;
-                }
-            }
-        } else {
-            foreach ($this->replacedByMotions as $motion) {
-                if ($motion->consultationId === $this->consultationId) {
-                    $motions[] = $motion;
-                }
-            }
-        }
-        return $motions;
-    }
-
     public function getSpeechQueues(): ActiveQuery
     {
         return $this->hasMany(SpeechQueue::class, ['motionId' => 'id']);
@@ -295,12 +301,7 @@ class Motion extends IMotion implements IRSSItem
 
     public function getMyConsultation(): ?Consultation
     {
-        $current = Consultation::getCurrent();
-        if ($current && $current->getMotion($this->id)) {
-            return $current;
-        } else {
-            return Consultation::findOne($this->consultationId);
-        }
+        return ConsultationRepository::getConsultationById($this->consultationId);
     }
 
     public function getMyAgendaItem(): ?ConsultationAgendaItem
@@ -334,62 +335,6 @@ class Motion extends IMotion implements IRSSItem
         } else {
             $this->title = '';
         }
-    }
-
-    /**
-     * @return Motion[]
-     */
-    public static function getNewestByConsultation(Consultation $consultation, int $limit = 5): array
-    {
-        $invisibleStatuses = array_map('intval', $consultation->getStatuses()->getInvisibleMotionStatuses());
-
-        $statuteTypes = [];
-        foreach ($consultation->motionTypes as $motionType) {
-            if ($motionType->amendmentsOnly) {
-                $statuteTypes[] = $motionType->id;
-            }
-        }
-
-        $query = Motion::find();
-        $query->where('motion.status NOT IN (' . implode(', ', $invisibleStatuses) . ')');
-        $query->andWhere('motion.consultationId = ' . intval($consultation->id));
-        if (count($statuteTypes) > 0) {
-            $query->andWhere('motion.motionTypeId NOT IN (' . implode(', ', $statuteTypes) . ')');
-        }
-        $query->orderBy("dateCreation DESC");
-        $query->offset(0)->limit($limit);
-        /** @var Motion[] $motions */
-        $motions = $query->all();
-        return $motions;
-    }
-
-    /**
-     * @return Motion[]
-     */
-    public static function getScreeningMotions(Consultation $consultation): array
-    {
-        $query = Motion::find();
-        $statuses = array_map('intval', $consultation->getStatuses()->getScreeningStatuses());
-        $query->where('motion.status IN (' . implode(', ', $statuses) . ')');
-        $query->andWhere('motion.consultationId = ' . intval($consultation->id));
-        $query->orderBy("dateCreation DESC");
-        /** @var Motion[] $motions */
-        $motions = $query->all();
-        return $motions;
-    }
-
-    /**
-     * @return Motion[]
-     */
-    public static function getObsoletedByMotions(Motion $motion): array
-    {
-        $query = Motion::find()
-            ->where('motion.status = ' . intval(IMotion::STATUS_OBSOLETED_BY_MOTION))
-            ->andWhere('motion.statusString = ' . intval($motion->id));
-        /** @var Motion[] $motions */
-        $motions = $query->all();
-
-        return $motions;
     }
 
     /**
@@ -452,21 +397,24 @@ class Motion extends IMotion implements IRSSItem
     /**
      * @return Amendment[]
      */
-    public function getVisibleAmendments(bool $includeWithdrawn = true, bool $ifMotionIsMoved = true): array
+    public function getFilteredAmendments(IMotionStatusFilter $filter): array
     {
-        if (!$ifMotionIsMoved && $this->status === Motion::STATUS_MOVED) {
-            return [];
-        }
+        return $filter->filterAmendments($this->amendments);
+    }
 
-        $filtered   = $this->getMyConsultation()->getStatuses()->getInvisibleAmendmentStatuses($includeWithdrawn);
-        $amendments = [];
-        foreach ($this->amendments as $amend) {
-            if (!in_array($amend->status, $filtered)) {
-                $amendments[] = $amend;
-            }
-        }
+    public function getFilteredAndSortedAmendments(IMotionStatusFilter $filter): array
+    {
+        $amendments = $this->getFilteredAmendments($filter);
 
-        return $amendments;
+        return MotionSorter::getSortedAmendments($this->getMyConsultation(), $amendments);
+    }
+
+    /**
+     * @return Amendment[]
+     */
+    public function getVisibleAmendments(bool $includeWithdrawn = true): array
+    {
+        return $this->getFilteredAmendments(IMotionStatusFilter::onlyUserVisible($this->getMyConsultation(), $includeWithdrawn));
     }
 
     /**
@@ -518,16 +466,16 @@ class Motion extends IMotion implements IRSSItem
     /**
      * @return Amendment[]
      */
-    public function getVisibleAmendmentsSorted(bool $includeWithdrawn = true, bool $ifMotionIsMoved = true): array
+    public function getVisibleAmendmentsSorted(bool $includeWithdrawn = true): array
     {
-        $amendments = $this->getVisibleAmendments($includeWithdrawn, $ifMotionIsMoved);
+        $amendments = $this->getVisibleAmendments($includeWithdrawn);
 
         return MotionSorter::getSortedAmendments($this->getMyConsultation(), $amendments);
     }
 
     public function iAmInitiator(): bool
     {
-        $user = RequestContext::getUser();
+        $user = RequestContext::getYiiUser();
         if ($user->isGuest) {
             return false;
         }
@@ -602,6 +550,9 @@ class Motion extends IMotion implements IRSSItem
             if ($supportSettings->allowMoreSupporters && $supportSettings->allowSupportingAfterPublication) {
                 // If it's activated explicitly, then supporting is allowed in every status, also after the deadline
                 return true;
+            }
+            if ($this->hasEnoughSupporters($this->getMyMotionType()->getMotionSupportTypeClass()) && !$supportSettings->allowMoreSupporters) {
+                return false;
             }
 
             if ($this->status !== IMotion::STATUS_COLLECTING_SUPPORTERS) {
@@ -689,6 +640,7 @@ class Motion extends IMotion implements IRSSItem
 
         $num = 0;
         foreach ($this->getSortedSections() as $section) {
+            /** @var MotionSection $section */
             $num += $section->getNumberOfCountableLines();
         }
 
@@ -705,7 +657,8 @@ class Motion extends IMotion implements IRSSItem
         }
 
         if ($this->getMyConsultation()->getSettings()->lineNumberingGlobal) {
-            $motions      = $this->getMyConsultation()->getVisibleMotions(false);
+            $motions = IMotionStatusFilter::onlyUserVisible($this->getMyConsultation(), false)
+                                          ->getFilteredConsultationMotions();
             $motionBlocks = MotionSorter::getSortedIMotions($this->getMyConsultation(), $motions);
             $lineNo       = 1;
             foreach ($motionBlocks as $motions) {
@@ -980,7 +933,7 @@ class Motion extends IMotion implements IRSSItem
         } else {
             $this->flushCache();
         }
-        HashedStaticFileCache::flushCache($this->getPdfCacheKey(), null);
+        HashedStaticCache::getInstance($this->getPdfCacheKey(), null)->setIsBulky(true)->flushCache();
         foreach ($this->amendments as $amend) {
             $amend->flushCacheWithChildren($items);
         }
@@ -989,8 +942,11 @@ class Motion extends IMotion implements IRSSItem
 
     public function flushViewCache(): void
     {
-        HashedStaticFileCache::flushCache(\app\views\motion\LayoutHelper::getViewCacheKey($this), null);
-        HashedStaticFileCache::flushCache($this->getPdfCacheKey(), null);
+        HashedStaticCache::getInstance(\app\views\motion\LayoutHelper::getViewCacheKey($this), null)->setIsBulky(true)->flushCache();
+        HashedStaticCache::getInstance($this->getPdfCacheKey(), null)->setIsBulky(true)->flushCache();
+        MotionRepository::flushCaches();
+        LayoutHelper::flushViewCaches($this->getMyConsultation());
+        AdminTodoItem::flushConsultationTodoCount($this->getMyConsultation());
     }
 
     public function getPdfCacheKey(): string
@@ -1100,7 +1056,13 @@ class Motion extends IMotion implements IRSSItem
             $return[\Yii::t('motion', 'status')] = $consultation->getStatuses()->getStatusNames()[$this->status];
         }
 
-        return $return;
+        if ($this->getMyMotionType()->getSettingsObj()->showProposalsInExports) {
+            if ($this->isProposalPublic() && $this->proposalStatus) {
+                $return[\Yii::t('amend', 'proposed_status')] = strip_tags($this->getFormattedProposalStatus(true));
+            }
+        }
+
+        return Layout::getMotionExportData($return, $this);
     }
 
     public function findAmendmentWithPrefix(string $prefix, ?Amendment $ignore = null): ?Amendment
@@ -1120,24 +1082,27 @@ class Motion extends IMotion implements IRSSItem
     }
 
     /**
+     * @param array<int|string, int> $sectionMapping
      * @throws FormError
      */
-    public function setMotionType(ConsultationMotionType $motionType): void
+    public function setMotionType(ConsultationMotionType $motionType, array $sectionMapping): void
     {
-        if (!$this->getMyMotionType()->isCompatibleTo($motionType)) {
-            throw new FormError('This motion cannot be changed to the type ' . $motionType->titleSingular);
-        }
-        if (count($this->getSortedSections(false)) !== count($this->getMyMotionType()->motionSections)) {
-            throw new FormError('This motion cannot be changed as it seems to be inconsistent');
+        foreach ($this->sections as $section) {
+            if (!isset($sectionMapping[$section->sectionId])) {
+                throw new FormError($motionType->titleSingular . ': no complete section mapping found. Missing: ' . $section->sectionId);
+            }
         }
 
         foreach ($this->amendments as $amendment) {
-            $amendment->setMotionType($motionType);
+            $amendment->setMotionType($motionType, $sectionMapping);
         }
 
+        /** @var MotionSection[] $mySections */
         $mySections = $this->getSortedSections(false);
         for ($i = 0; $i < count($mySections); $i++) {
-            if (!$mySections[$i]->overrideSectionId($motionType->motionSections[$i])) {
+            /** @var ConsultationSettingsMotionSection $newSection */
+            $newSection = $motionType->getSectionById($sectionMapping[$mySections[$i]->sectionId]);
+            if (!$mySections[$i]->overrideSectionId($newSection)) {
                 $err = print_r($mySections[$i]->getErrors(), true);
                 throw new FormError('Something terrible happened while changing the motion type: ' . $err);
             }

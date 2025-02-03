@@ -1,3 +1,5 @@
+import '../shared/PolicySetter';
+
 declare let Sortable;
 
 const CONTACT_NONE = 0;
@@ -20,10 +22,9 @@ const TYPE_TABULAR = 4;
 const TYPE_PDF_ATTACHMENT = 5;
 const TYPE_PDF_ALTERNATIVE = 6;
 const TYPE_VIDEO_EMBED = 7;
+const TYPE_TEXT_EDITORIAL = 8;
 
 const TYPE_TABULAR_SELECT = 4;
-
-const POLICY_USER_GROUPS = 6;
 
 class MotionTypeEdit {
     private motionsHaveSupporters: boolean;
@@ -44,7 +45,7 @@ class MotionTypeEdit {
         this.initInitiatorForm($("#amendmentSupportersForm"));
 
         $('.policyWidget').each((ix, el) => {
-            this.initPolicyWidget($(el));
+            new PolicySetter($(el));
         });
 
         const $sameSettings = $("#sameInitiatorSettingsForAmendments input");
@@ -67,41 +68,6 @@ class MotionTypeEdit {
         }).trigger('change');
     }
 
-    private initPolicyWidget($widget: JQuery) {
-        const $select: any = $widget.find('.userGroupSelect'),
-            loadUrl = $select.data('load-url');
-        let selectizeOption = {};
-        if (loadUrl) {
-            selectizeOption = Object.assign(selectizeOption, {
-                loadThrottle: null,
-                valueField: 'id',
-                labelField: 'label',
-                searchField: 'label',
-                load: function (query, cb) {
-                    if (!query) return cb();
-                    return $.get(loadUrl, {query}).then(res => {
-                        cb(res);
-                    });
-                },
-                render: {
-                    option_create: (data, escape) => {
-                        return '<div class="create">' + __t('std', 'add_tag') + ': <strong>' + escape(data.input) + '</strong></div>';
-                    }
-                }
-            });
-        }
-        $select.find("select").selectize(selectizeOption);
-
-        const $policySelect = $widget.find(".policySelect");
-        $policySelect.on("change", () => {
-            if (parseInt($policySelect.val() as string, 10) === POLICY_USER_GROUPS) {
-                $select.removeClass("hidden");
-            } else {
-                $select.addClass("hidden");
-            }
-        }).trigger("change");
-    }
-
     private initInitiatorForm($form: JQuery) {
         const $initiatorGender = $form.find(".contactGender input");
 
@@ -109,6 +75,7 @@ class MotionTypeEdit {
         const $supportAllowMore = $form.find(".formGroupAllowMore input");
         const $initiatorCanBePerson = $form.find(".contactDetails .initiatorCanBePerson input");
         const $initiatorCanBeOrga = $form.find(".contactDetails .initiatorCanBeOrganization input");
+        const $initiatorSetPermissions= $form.find(".contactDetails .initiatorSetPermissions input");
 
         let currentType = parseInt($supportType.find('input').val() as string, 10);
 
@@ -129,6 +96,8 @@ class MotionTypeEdit {
             ),
             initiatorCanBePerson: () => (currentType !== SUPPORTER_NO_INITIATOR && $initiatorCanBePerson.prop("checked")),
             initiatorCanBeOrga: () => (currentType !== SUPPORTER_NO_INITIATOR && $initiatorCanBeOrga.prop("checked")),
+            initiatorSetPersonPermissions: () => (currentType !== SUPPORTER_NO_INITIATOR && $initiatorSetPermissions.prop("checked") && $initiatorCanBePerson.prop("checked")),
+            initiatorSetOrgaPermissions: () => (currentType !== SUPPORTER_NO_INITIATOR && $initiatorSetPermissions.prop("checked") && $initiatorCanBeOrga.prop("checked")),
         };
 
         const recalcVisibilities = () => {
@@ -170,9 +139,8 @@ class MotionTypeEdit {
             }
             recalcVisibilities();
         });
-        $initiatorGender.on("change", () => {
-            recalcVisibilities();
-        }).trigger("change");
+        $initiatorSetPermissions.on("change", recalcVisibilities).trigger("change");
+        $initiatorGender.on("change", recalcVisibilities).trigger("change");
     }
 
     private setMaxPdfSupporters() {
@@ -278,13 +246,15 @@ class MotionTypeEdit {
         $list.on('change', '.sectionType', function () {
             let $li = $(this).parents('li').first(),
                 val = parseInt($(this).val() as string);
-            $li.removeClass('title textHtml textSimple image tabularData pdfAlternative pdfAttachment videoEmbed');
+            $li.removeClass('title textHtml textSimple textEditorial image tabularData pdfAlternative pdfAttachment videoEmbed');
             if (val === TYPE_TITLE) {
                 $li.addClass('title');
             } else if (val === TYPE_TEXT_SIMPLE) {
                 $li.addClass('textSimple');
             } else if (val === TYPE_TEXT_HTML) {
                 $li.addClass('textHtml');
+            } else if (val === TYPE_TEXT_EDITORIAL) {
+                $li.addClass('textEditorial');
             } else if (val === TYPE_IMAGE) {
                 $li.addClass('image');
             } else if (val === TYPE_TABULAR) {
@@ -321,6 +291,16 @@ class MotionTypeEdit {
             }
         });
         $list.find('.nonPublic').trigger('change');
+
+        $list.on('change', '.hasExplanation input', function () {
+            let $li = $(this).parents('li').first();
+            if ($(this).prop('checked')) {
+                $li.find('.explanationRow').removeClass("hidden");
+            } else {
+                $li.find('.explanationRow').addClass("hidden");
+            }
+        });
+        $list.find('.hasExplanation input').trigger('change');
 
         $('.sectionAdder').on('click', function (ev) {
             ev.preventDefault();

@@ -1,29 +1,104 @@
 <?php
 
+declare(strict_types=1);
+
 namespace app\views\consultation;
 
+use app\components\{HashedStaticCache, HTMLTools, IMotionStatusFilter, MotionSorter, Tools, UrlHelper};
 use app\models\IMotionList;
-use app\components\{HTMLTools, MotionSorter, Tools, UrlHelper};
-use app\models\db\{Amendment,
-    AmendmentComment,
-    Consultation,
-    ConsultationAgendaItem,
-    IComment,
-    IMotion,
-    Motion,
-    MotionComment,
-    User};
-use app\models\settings\Consultation as ConsultationSettings;
+use app\models\settings\{AntragsgruenApp, Consultation as ConsultationSettings, Privileges};
+use app\models\db\{Amendment, AmendmentComment, Consultation, ConsultationAgendaItem, ConsultationSettingsTag, IComment, IMotion, Motion, MotionComment, User};
 use yii\helpers\Html;
 
 class LayoutHelper
 {
+    private static function getHomePageCacheForType(Consultation $consultation, string $type): HashedStaticCache
+    {
+        $cache = HashedStaticCache::getInstance('getHomePage', [
+            $consultation->id,
+            $type,
+            $consultation->getSettings()->startLayoutResolutions,
+        ]);
+        if (AntragsgruenApp::getInstance()->viewCacheFilePath) {
+            $cache->setIsSynchronized(true);
+            $cache->setIsBulky(true);
+        } else {
+            $cache->setSkipCache(true);
+        }
+
+        if ($type === 'index_layout_agenda' && User::havePrivilege($consultation, Privileges::PRIVILEGE_CONTENT_EDIT, null)) {
+            $cache->setSkipCache(true);
+        }
+        if (!in_array($type, ['index_layout_std', 'index_layout_tags', 'index_layout_agenda', 'index_layout_discussion_tags'])) {
+            // Disable cache for plugin homepages, to prevent accidental over-caching
+            $cache->setSkipCache(true);
+        }
+
+        return $cache;
+    }
+
+    /**
+     * @return HashedStaticCache[]
+     */
+    public static function getAllHomePageCaches(Consultation $consultation): array
+    {
+        $settings = $consultation->getSettings();
+        $views = array_map(fn(int $type) => $settings->getStartLayoutViewFromId($type), array_keys($settings::getStartLayouts()));
+        $views = array_unique($views);
+
+        return array_values(array_filter(array_map(fn(string $view) => self::getHomePageCacheForType($consultation, $view), $views)));
+    }
+
+    public static function getHomePageCache(Consultation $consultation): HashedStaticCache
+    {
+        return self::getHomePageCacheForType($consultation, $consultation->getSettings()->getStartLayoutView());
+    }
+
+    public static function getTagMotionListCache(Consultation $consultation, ConsultationSettingsTag $tag, bool $isResolutionList): HashedStaticCache
+    {
+        $cache = HashedStaticCache::getInstance('tagMotionListCache', [
+            $consultation->id,
+            $tag->id,
+            $isResolutionList,
+        ]);
+        if (AntragsgruenApp::getInstance()->viewCacheFilePath) {
+            $cache->setIsSynchronized(true);
+            $cache->setIsBulky(true);
+        } else {
+            $cache->setSkipCache(true);
+        }
+
+        return $cache;
+    }
+
+    public static function getSidebarPdfCache(Consultation $consultation): HashedStaticCache
+    {
+        $cache = HashedStaticCache::getInstance('sidebarPdf', [$consultation->id]);
+        if (AntragsgruenApp::getInstance()->viewCacheFilePath) {
+            $cache->setIsSynchronized(true);
+        } else {
+            $cache->setSkipCache(true);
+        }
+
+        return $cache;
+    }
+
+    public static function flushViewCaches(Consultation $consultation): void
+    {
+        foreach (self::getAllHomePageCaches($consultation) as $homePageCache) {
+            $homePageCache->flushCache();
+        }
+        self::getSidebarPdfCache($consultation)->flushCache();
+        foreach ($consultation->tags as $tag) {
+            self::getTagMotionListCache($consultation, $tag, true)->flushCache();
+            self::getTagMotionListCache($consultation, $tag, false)->flushCache();
+        }
+    }
+
     private static function getMotionLineContent(Motion $motion, Consultation $consultation): string
     {
         $return = '<p class="title">' . "\n";
-
-        $privateMotionComments = MotionComment::getAllForUserAndConsultationByMotion($consultation, User::getCurrentUser(), MotionComment::STATUS_PRIVATE);
-        $return .= LayoutHelper::getPrivateCommentIndicator($motion, $privateMotionComments, []);
+        $return .= '<span class="privateCommentHolder"></span>';
 
         $motionUrl = UrlHelper::createMotionUrl($motion);
         $return    .= '<a href="' . Html::encode($motionUrl) . '" class="motionLink' . $motion->id . '">';
@@ -38,8 +113,7 @@ class LayoutHelper
 
         $return .= '</a>';
 
-        $hasPDF = ($motion->getMyMotionType()->getPDFLayoutClass() !== null);
-        if ($hasPDF && $motion->status !== Motion::STATUS_MOVED) {
+        if ($motion->getMyMotionType()->hasPdfLayout() && $motion->status !== Motion::STATUS_MOVED) {
             $html   = '<span class="glyphicon glyphicon-download-alt" aria-hidden="true"></span> PDF';
             $return .= HtmlTools::createExternalLink($html, UrlHelper::createMotionUrl($motion, 'pdf'), ['class' => 'pdfLink']);
         }
@@ -83,8 +157,7 @@ class LayoutHelper
         $return = '';
 
         $consultation = $amendment->getMyConsultation();
-        $privateAmendmentComments = AmendmentComment::getAllForUserAndConsultationByMotion($consultation, User::getCurrentUser(), AmendmentComment::STATUS_PRIVATE);
-        $return .= LayoutHelper::getPrivateCommentIndicator($amendment, [], $privateAmendmentComments);
+        $return .= '<span class="privateCommentHolder"></span>';
 
         $title  = ($amendment->showTitlePrefix() ? $amendment->getFormattedTitlePrefix() : \Yii::t('amend', 'amendment'));
         $return .= '<a href="' . Html::encode(UrlHelper::createAmendmentUrl($amendment)) . '" ' .
@@ -129,8 +202,7 @@ class LayoutHelper
 
         $return .= '</a>';
 
-        $hasPDF = ($amendment->getMyMotionType()->getPDFLayoutClass() !== null);
-        if ($hasPDF && $amendment->status !== Motion::STATUS_MOVED) {
+        if ($amendment->getMyMotionType()->hasPdfLayout() && $amendment->status !== Motion::STATUS_MOVED) {
             $html   = '<span class="glyphicon glyphicon-download-alt" aria-hidden="true"></span> PDF';
             $return .= HtmlTools::createExternalLink($html, UrlHelper::createAmendmentUrl($amendment, 'pdf'), ['class' => 'pdfLink']);
         }
@@ -188,7 +260,9 @@ class LayoutHelper
         $return .= static::getMotionLineContent($motion, $consultation);
         $return .= "<span class='clearfix'></span>\n";
 
-        $amendments = MotionSorter::getSortedAmendments($consultation, $motion->getVisibleAmendments(true, false));
+        $filter = IMotionStatusFilter::onlyUserVisible($consultation, true)
+                                     ->noAmendmentsIfMotionIsMoved();
+        $amendments = MotionSorter::getSortedAmendments($consultation, $motion->getFilteredAmendments($filter));
         if ($hasAgenda) {
             $amendments = array_values(array_filter($amendments, function (Amendment $amendment): bool {
                 // Amendments with an explicit agendaItemId will be shown directly at the agenda item, not as sub-item of the motion
@@ -493,7 +567,7 @@ class LayoutHelper
             if ($comment->paragraph === -1) {
                 $texts[] = $comment->text;
             } else {
-                $texts[] = str_replace('%NO%', $comment->paragraph, \Yii::t('motion', 'private_notes_para')) .
+                $texts[] = str_replace('%NO%', (string) $comment->paragraph, \Yii::t('motion', 'private_notes_para')) .
                     ': ' . $comment->text;
             }
         }

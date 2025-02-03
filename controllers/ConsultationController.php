@@ -4,9 +4,8 @@ namespace app\controllers;
 
 use app\models\AdminTodoItem;
 use app\models\exceptions\ResponseException;
-use app\models\settings\AntragsgruenApp;
-use app\models\settings\PrivilegeQueryContext;
-use app\models\settings\Privileges;
+use app\models\settings\{AntragsgruenApp, PrivilegeQueryContext, Privileges};
+use app\views\consultation\LayoutHelper;
 use app\models\http\{BinaryFileResponse,
     HtmlErrorResponse,
     HtmlResponse,
@@ -19,9 +18,9 @@ use app\models\db\{Amendment,
     AmendmentComment,
     IComment,
     IRSSItem,
-    Motion,
     Consultation,
     MotionComment,
+    repostory\MotionRepository,
     SpeechQueue,
     User,
     UserNotification};
@@ -32,6 +31,9 @@ use app\models\proposedProcedure\Factory;
 class ConsultationController extends Base
 {
     use ConsultationAgendaTrait;
+
+    public const VIEW_ID_HOME = 'home';
+    public const VIEW_ID_INDEX = 'index';
 
     /**
      * @param \yii\base\Action $action
@@ -90,7 +92,7 @@ class ConsultationController extends Base
 
     public function actionFeedmotions(): BinaryFileResponse
     {
-        $newest = Motion::getNewestByConsultation($this->consultation, 20);
+        $newest = MotionRepository::getNewestByConsultation($this->consultation, 20);
 
         $feed = new RSSExporter();
         if ($this->consultation->getSettings()->logoUrl) {
@@ -99,7 +101,6 @@ class ConsultationController extends Base
             $feed->setImage('/img/logo.png');
         }
         $feed->setTitle($this->consultation->title . ': ' . \Yii::t('con', 'feed_motions'));
-        $feed->setLanguage(\Yii::$app->language);
         $feed->setBaseLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/index')));
         $feed->setFeedLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/feedmotions')));
         foreach ($newest as $motion) {
@@ -126,7 +127,6 @@ class ConsultationController extends Base
             $feed->setImage('/img/logo.png');
         }
         $feed->setTitle($this->consultation->title . ': ' . \Yii::t('con', 'feed_amendments'));
-        $feed->setLanguage(\Yii::$app->language);
         $feed->setBaseLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/index')));
         $feed->setFeedLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/feedamendments')));
         foreach ($newest as $amend) {
@@ -153,7 +153,6 @@ class ConsultationController extends Base
             $feed->setImage('/img/logo.png');
         }
         $feed->setTitle($this->consultation->title . ': ' . \Yii::t('con', 'feed_comments'));
-        $feed->setLanguage(\Yii::$app->language);
         $feed->setBaseLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/index')));
         $feed->setFeedLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/feedcomments')));
         foreach ($newest as $comm) {
@@ -172,7 +171,7 @@ class ConsultationController extends Base
     public function actionFeedall(): BinaryFileResponse
     {
         $items = array_merge(
-            Motion::getNewestByConsultation($this->consultation, 20),
+            MotionRepository::getNewestByConsultation($this->consultation, 20),
             Amendment::getNewestByConsultation($this->consultation, 20),
             MotionComment::getNewestByConsultation($this->consultation, 20),
             AmendmentComment::getNewestByConsultation($this->consultation, 20)
@@ -189,7 +188,6 @@ class ConsultationController extends Base
             $feed->setImage('/img/logo.png');
         }
         $feed->setTitle($this->consultation->title . ': ' . \Yii::t('con', 'feed_all'));
-        $feed->setLanguage(\Yii::$app->language);
         $feed->setBaseLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/index')));
         $feed->setFeedLink(UrlHelper::absolutizeLink(UrlHelper::createUrl('consultation/feedall')));
 
@@ -254,7 +252,7 @@ class ConsultationController extends Base
     private function consultationSidebar(Consultation $consultation): void
     {
         $newestAmendments = Amendment::getNewestByConsultation($consultation, 5);
-        $newestMotions    = Motion::getNewestByConsultation($consultation, 3);
+        $newestMotions    = MotionRepository::getNewestByConsultation($consultation, 3);
         $newestComments   = IComment::getNewestByConsultation($consultation, 3);
 
         $this->renderPartial(
@@ -308,25 +306,24 @@ class ConsultationController extends Base
             return new RedirectResponse(UrlHelper::createMotionUrl($this->consultation->getForcedMotion()));
         }
 
-        $this->consultation->preloadAllMotionData(Consultation::PRELOAD_ONLY_AMENDMENTS);
+        $cache = LayoutHelper::getHomePageCache($this->consultation);
+        if ($cache->isSkipCache() || !$cache->cacheIsFilled()) {
+            $this->consultation->preloadAllMotionData(Consultation::PRELOAD_ONLY_AMENDMENTS);
+        }
 
         $this->layout = 'column2';
         $this->consultationSidebar($this->consultation);
 
         $myself = User::getCurrentUser();
-        if ($myself) {
-            $myMotions    = $myself->getMySupportedMotionsByConsultation($this->consultation);
-            $myAmendments = $myself->getMySupportedAmendmentsByConsultation($this->consultation);
-        } else {
-            $myMotions    = null;
-            $myAmendments = null;
-        }
 
         return new HtmlResponse($this->render('index', [
+            'cache' => $cache,
             'consultation' => $this->consultation,
             'myself' => $myself,
-            'myMotions' => $myMotions,
-            'myAmendments' => $myAmendments,
+            'myMotions' => $myself?->getMySupportedMotionsByConsultation($this->consultation),
+            'myAmendments' => $myself?->getMySupportedAmendmentsByConsultation($this->consultation),
+            'myMotionComments' => MotionComment::getPrivatelyCommentedByConsultation($myself, $this->consultation),
+            'myAmendmentComments' => AmendmentComment::getPrivatelyCommentedByConsultation($myself, $this->consultation),
         ]));
     }
 
@@ -482,9 +479,20 @@ class ConsultationController extends Base
             throw new ResponseException(new HtmlErrorResponse(403, \Yii::t('admin', 'no_access')));
         }
 
-        $todo = AdminTodoItem::getConsultationTodos($this->consultation);
+        $todo = AdminTodoItem::getConsultationTodos($this->consultation, true);
 
         return new HtmlResponse($this->render('todo', ['todo' => $todo]));
+    }
+
+    public function actionTodoCount(): JsonResponse
+    {
+        if (!User::havePrivilege($this->consultation, Privileges::PRIVILEGE_ANY, PrivilegeQueryContext::anyRestriction())) {
+            throw new ResponseException(new HtmlErrorResponse(403, \Yii::t('admin', 'no_access')));
+        }
+
+        $todo = AdminTodoItem::getConsultationTodoCount($this->consultation, false);
+
+        return new JsonResponse(['count' => $todo]);
     }
 
     private function getUnassignedQueueOrCreate(): SpeechQueue
@@ -574,5 +582,33 @@ class ConsultationController extends Base
         $this->layout = 'column2';
 
         return new HtmlResponse($this->render('@app/views/voting/voting-results'));
+    }
+
+    private function tagMotionResolutionList(int $tagId, bool $isResolutionList): ResponseInterface
+    {
+        $tag = $this->consultation->getTagById($tagId);
+        if (!$tag) {
+            return new HtmlErrorResponse(404, 'Tag not found');
+        }
+
+        $myself = User::getCurrentUser();
+
+        return new HtmlResponse($this->render('tag_motion_list', [
+            'tag' => $tag,
+            'cache' => LayoutHelper::getTagMotionListCache($this->consultation, $tag, $isResolutionList),
+            'isResolutionList' => $isResolutionList,
+            'myMotionComments' => MotionComment::getPrivatelyCommentedByConsultation($myself, $this->consultation),
+            'myAmendmentComments' => AmendmentComment::getPrivatelyCommentedByConsultation($myself, $this->consultation),
+        ]));
+    }
+
+    public function actionTagsMotions(int $tagId): ResponseInterface
+    {
+        return $this->tagMotionResolutionList($tagId, false);
+    }
+
+    public function actionTagsResolutions(int $tagId): ResponseInterface
+    {
+        return $this->tagMotionResolutionList($tagId, true);
     }
 }

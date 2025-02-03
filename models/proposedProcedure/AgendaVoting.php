@@ -103,21 +103,24 @@ class AgendaVoting
 
     private function getApiObject(?string $title, ?User $user, string $context): array
     {
-        $answers = ($this->voting ? $this->voting->getAnswers() : null);
+        $answers = $this->voting?->getAnswers();
         $votingBlockJson = [
             'id' => ($this->getId() === 'new' ? null : $this->getId()),
             'title' => $title,
-            'status' => ($this->voting ? $this->voting->votingStatus : null),
-            'votes_public' => ($this->voting ? $this->voting->votesPublic : null),
-            'results_public' => ($this->voting ? $this->voting->resultsPublic : null),
-            'assigned_motion' => ($this->voting ? $this->voting->assignedToMotionId : null),
-            'majority_type' => ($this->voting ? $this->voting->majorityType : null),
-            'quorum_type' => ($this->voting ? $this->voting->quorumType : null),
+            'status' => $this->voting?->votingStatus,
+            'votes_public' => $this->voting?->votesPublic,
+            'results_public' => $this->voting?->resultsPublic,
+            'assigned_motion' => $this->voting?->assignedToMotionId,
+            'majority_type' => $this->voting?->majorityType,
+            'quorum_type' => $this->voting?->quorumType,
             'user_groups' => [],
             'answers' => $answers,
-            'answers_template' => ($this->voting ? $this->voting->getAnswerTemplate() : null),
+            'answers_template' => $this->voting?->getAnswerTemplate(),
+            'has_general_abstention' => false,
             'items' => [],
         ];
+
+        $generalAbstentionItem = null;
 
         if ($this->voting) {
             User::preloadConsultationUserGroups($this->voting->getMyConsultation());
@@ -132,19 +135,34 @@ class AgendaVoting
                 $votingBlockJson['user_groups'][] = $userGroup->getVotingApiObject($userGroupOverrides[$userGroup->id] ?? null);
             }
 
+            foreach ($this->items as $item) {
+                if ($item->isGeneralAbstention()) {
+                    $votingBlockJson['has_general_abstention'] = true;
+                    $generalAbstentionItem = $item;
+                }
+            }
+
             $votingBlockJson['current_time'] = (int)round(microtime(true) * 1000); // needs to include milliseconds for accuracy
             $votingBlockJson['voting_time'] = $settings->votingTime;
             $votingBlockJson['opened_ts'] = ($this->voting->votingStatus === VotingBlock::STATUS_OPEN ? $settings->openedTs * 1000 : null);
         }
 
+        if ($this->voting && $context === static::API_CONTEXT_ADMIN && $generalAbstentionItem) {
+            $this->setApiObjectAbstentionData($votingBlockJson, $this->voting, $generalAbstentionItem, true);
+        }
+        if ($this->voting && $context === static::API_CONTEXT_RESULT && $generalAbstentionItem) {
+            $this->setApiObjectAbstentionData($votingBlockJson, $this->voting, $generalAbstentionItem, false);
+        }
+
         if ($context === static::API_CONTEXT_ADMIN) {
             $votingBlockJson['log'] = ($this->voting ? $this->voting->getActivityLogForApi() : []);
-            $votingBlockJson['max_votes_by_group'] = ($this->voting ? $this->voting->getSettings()->maxVotesByGroup : null);
+            $votingBlockJson['max_votes_by_group'] = $this->voting?->getSettings()->maxVotesByGroup;
         }
         if ($this->voting) {
-            list($total, $users) = $this->voting->getVoteStatistics();
-            $votingBlockJson['votes_total'] = $total;
-            $votingBlockJson['votes_users'] = $users;
+            $stats = $this->voting->getVoteStatistics();
+            $votingBlockJson['votes_total'] = $stats['votes'];
+            $votingBlockJson['votes_users'] = $stats['users'];
+            $votingBlockJson['abstentions_total'] = $stats['abstentions'];
             $votingBlockJson['vote_policy'] = $this->voting->getVotingPolicy()->getApiObject();
 
             $quorumType = $this->voting->getQuorumType();
@@ -159,14 +177,20 @@ class AgendaVoting
 
         if ($user && $this->voting && $context === static::API_CONTEXT_VOTING) {
             $votingBlockJson['votes_remaining'] = $this->voting->getUserRemainingVotes($user);
+            $votingBlockJson['vote_weight'] = $user->getSettingsObj()->getVoteWeight($this->voting->getMyConsultation());
+            $votingBlockJson['has_abstained'] = $this->voting->userHasAbstained($user);
         }
 
         foreach ($this->items as $item) {
+            if ($item->isGeneralAbstention()) {
+                continue;
+            }
+
             $data = $item->getAgendaApiBaseObject();
 
             if ($user && $this->voting && $context === static::API_CONTEXT_VOTING) {
                 $vote = $this->voting->getUserSingleItemVote($user, $item);
-                $data['voted'] = ($vote ? $vote->getVoteForApi($answers) : null);
+                $data['voted'] = $vote?->getVoteForApi($answers);
                 $data['can_vote'] = $this->voting->userIsCurrentlyAllowedToVoteFor($user, $item, $vote);
             }
 
@@ -183,6 +207,26 @@ class AgendaVoting
         return $votingBlockJson;
     }
 
+    private function canSeeResults(VotingBlock $voting, bool $isAdmin): bool
+    {
+        if ($voting->resultsPublic === VotingBlock::RESULTS_PUBLIC_YES) {
+            return true;
+        } else {
+            return $isAdmin;
+        }
+    }
+
+    private function canSeeVotes(VotingBlock $voting, bool $isAdmin): bool
+    {
+        if ($voting->votesPublic === VotingBlock::VOTES_PUBLIC_ALL) {
+            return true;
+        } elseif ($voting->votesPublic === VotingBlock::VOTES_PUBLIC_ADMIN) {
+            return $isAdmin;
+        } else {
+            return false;
+        }
+    }
+
     private function setApiObjectResultData(array &$data, VotingBlock $voting, IVotingItem $item, bool $isAdmin): void
     {
         $quorumType = $voting->getQuorumType();
@@ -191,19 +235,9 @@ class AgendaVoting
             $data['quorum_custom_current'] = $quorumType->getCustomQuorumCurrent($voting, $item);
         }
 
-        if ($voting->resultsPublic === VotingBlock::RESULTS_PUBLIC_YES) {
-            $canSeeResults = true;
-        } else {
-            $canSeeResults = $isAdmin;
-        }
+        $canSeeResults = $this->canSeeResults($voting, $isAdmin);
+        $canSeeVotes = $this->canSeeVotes($voting, $isAdmin);
 
-        if ($voting->votesPublic === VotingBlock::VOTES_PUBLIC_ALL) {
-            $canSeeVotes = true;
-        } elseif ($voting->votesPublic === VotingBlock::VOTES_PUBLIC_ADMIN) {
-            $canSeeVotes = $isAdmin;
-        } else {
-            $canSeeVotes = false;
-        }
         if (!$canSeeVotes && !$canSeeResults) {
             return;
         }
@@ -220,30 +254,55 @@ class AgendaVoting
             }
         }
         if ($canSeeVotes) {
-            // Extra safeguard to prevent accidental exposure of votes, even if this case should not be triggerable through the interface
-            $singleVotes = array_filter($votes, function (Vote $vote) use ($isAdmin): bool {
-                if ($vote->public === VotingBlock::VOTES_PUBLIC_ALL) {
-                    return true;
-                } elseif ($vote->public === VotingBlock::VOTES_PUBLIC_ADMIN) {
-                    return $isAdmin;
-                } else {
-                    return false;
-                }
-            });
-            // Filter out deleted users
-            $singleVotes = array_filter($singleVotes, function (Vote $vote): bool {
-                return !!$vote->getUser();
-            });
-            $singleVotes = array_values($singleVotes);
             $data['votes'] = array_map(function (Vote $vote) use ($answers, $voting): array {
                 return [
                     'vote' => $vote->getVoteForApi($answers),
+                    'weight' => $vote->weight,
                     'user_id' => $vote->userId,
                     'user_name' => ($vote->getUser() ? $vote->getUser()->getAuthUsername() : null),
                     'user_groups' => ($vote->getUser() ? $vote->getUser()->getConsultationUserGroupIds($voting->getMyConsultation()) : null),
                 ];
-            }, $singleVotes);
+            }, $this->getFilteredVotesList($votes, $isAdmin));
         }
+    }
+
+    private function setApiObjectAbstentionData(array &$data, VotingBlock $voting, IVotingItem $item, bool $isAdmin): void
+    {
+        $canSeeVotes = $this->canSeeVotes($voting, $isAdmin);
+        if (!$canSeeVotes) {
+            return;
+        }
+
+        $votes = $voting->getVotesForVotingItem($item);
+        $data['abstention_users'] = array_map(function (Vote $vote) use ($voting): array {
+            return [
+                'user_id' => $vote->userId,
+                'user_name' => ($vote->getUser() ? $vote->getUser()->getAuthUsername() : null),
+                'user_groups' => ($vote->getUser() ? $vote->getUser()->getConsultationUserGroupIds($voting->getMyConsultation()) : null),
+            ];
+        }, $this->getFilteredVotesList($votes, $isAdmin));
+    }
+
+    /**
+     * @return Vote[]
+     */
+    private function getFilteredVotesList(array $votes, bool $isAdmin): array
+    {
+        // Extra safeguard to prevent accidental exposure of votes, even if this case should not be triggerable through the interface
+        $singleVotes = array_filter($votes, function (Vote $vote) use ($isAdmin): bool {
+            if ($vote->public === VotingBlock::VOTES_PUBLIC_ALL) {
+                return true;
+            } elseif ($vote->public === VotingBlock::VOTES_PUBLIC_ADMIN) {
+                return $isAdmin;
+            } else {
+                return false;
+            }
+        });
+        // Filter out deleted users
+        $singleVotes = array_filter($singleVotes, function (Vote $vote): bool {
+            return !!$vote->getUser();
+        });
+        return array_values($singleVotes);
     }
 
     public function getProposedProcedureApiObject(bool $hasMultipleVotingBlocks): array

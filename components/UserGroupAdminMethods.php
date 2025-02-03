@@ -4,6 +4,7 @@ namespace app\components;
 
 use app\components\mail\Tools as MailTools;
 use app\models\exceptions\{AlreadyExists, FormError, MailNotSent, UserEditFailed};
+use app\models\AdminTodoItem;
 use app\models\consultationLog\UserGroupChange;
 use app\models\settings\{AntragsgruenApp, Privileges, UserGroupPermissions};
 use app\models\db\{Consultation, ConsultationLog, ConsultationUserGroup, EMailLog, User};
@@ -134,9 +135,10 @@ class UserGroupAdminMethods
         }
 
         $this->consultation->refresh();
+        AdminTodoItem::flushUserTodoCount($this->consultation, $userId);
     }
 
-    public function setUserData(int $userId, string $nameGiven, string $nameFamily, string $organization, string $ppReplyTo, ?string $newPassword): void
+    public function setUserData(int $userId, string $nameGiven, string $nameFamily, string $organization, string $ppReplyTo, ?string $newPassword, ?string $newEmail, bool $remove2Fa, bool $force2Fa, bool $preventPwdChange, bool $forcePwdChange): void
     {
         $user = User::findOne(['id' => $userId]);
 
@@ -144,18 +146,52 @@ class UserGroupAdminMethods
         $settings->ppReplyTo = $ppReplyTo;
         $user->setSettingsObj($settings);
 
-        if (trim($nameGiven) !== '' && trim($nameFamily) !== '') {
+        if ((trim($nameGiven) !== '' && trim($nameFamily) !== '') || trim($organization) !== '') {
             $user->nameFamily = trim($nameFamily);
             $user->nameGiven = trim($nameGiven);
             $user->organization = trim($organization);
             $user->name = trim(trim($nameGiven) . ' ' . trim($nameFamily));
         }
 
+        if (trim($newEmail ?? '')) {
+            $newEmail = filter_var(trim($newEmail ?? ''), FILTER_VALIDATE_EMAIL);
+            if (!$newEmail) {
+                throw new UserEditFailed(\Yii::t('admin', 'siteacc_err_invalid_email'));
+            }
+            $newAuth = User::AUTH_EMAIL . ':' . $newEmail;
+            $existingUser = User::findOne(['auth' => $newAuth]);
+            if ($existingUser) {
+                throw new UserEditFailed(\Yii::t('admin', 'siteacc_err_email_exists'));
+            }
+
+            $user->auth = $newAuth;
+            $user->email = $newEmail;
+        }
+
+        $settings = $user->getSettingsObj();
+        if ($remove2Fa) {
+            $settings->secondFactorKeys = [];
+        }
+        $settings->enforceTwoFactorAuthentication = $force2Fa;
+        $settings->preventPasswordChange = $preventPwdChange;
+        $settings->forcePasswordChange = $forcePwdChange;
+        $user->setSettingsObj($settings);
+
         $user->save();
 
         if ($newPassword !== null && trim($newPassword) !== '') {
             $user->changePassword(trim($newPassword));
         }
+    }
+
+    public function setUserVoteWeight(int $userId, int $voteWeight): void
+    {
+        $user = User::findOne(['id' => $userId]);
+
+        $settings = $user->getSettingsObj();
+        $settings->setVoteWeight($this->consultation, $voteWeight);
+        $user->setSettingsObj($settings);
+        $user->save();
     }
 
     private function getUserGroup(int $userGroupId): ?ConsultationUserGroup
@@ -187,6 +223,8 @@ class UserGroupAdminMethods
                     $user->link('userGroups', $defaultGroup);
                     $this->logUserGroupAdd($user, $userGroup);
                 }
+
+                AdminTodoItem::flushUserTodoCount($this->consultation, $user->id);
             } else {
                 $existingUserIds[] = $user->id;
             }
@@ -199,6 +237,7 @@ class UserGroupAdminMethods
             $user = User::findOne(['id' => $userId]);
             $user->link('userGroups', $userGroup);
             $this->logUserGroupAdd($user, $userGroup);
+            AdminTodoItem::flushUserTodoCount($this->consultation, $user->id);
         }
 
         $userGroup->refresh();
@@ -227,6 +266,19 @@ class UserGroupAdminMethods
             $this->logUserGroupRemove($user, $userGroup);
         }
 
+        $this->consultation->refresh();
+        AdminTodoItem::flushUserTodoCount($this->consultation, $user->id);
+    }
+
+    public function deleteUser(int $userId): void
+    {
+        $myself = User::getCurrentUser();
+        if ($userId === $myself->id) {
+            throw new UserEditFailed(\Yii::t('admin', 'siteacc_err_lockout'));
+        }
+
+        $user = User::findOne(['id' => $userId]);
+        $user->deleteAccount();
         $this->consultation->refresh();
     }
 
@@ -427,7 +479,7 @@ class UserGroupAdminMethods
     public function addUserByEmail(string $email, string $name, ?string $setPassword, ConsultationUserGroup $initGroup, string $emailText): User
     {
         $email = mb_strtolower($email);
-        $auth = 'email:' . $email;
+        $auth = User::AUTH_EMAIL . ':' . $email;
 
         /** @var User|null $user */
         $user = User::find()->where(['auth' => $auth])->andWhere('status != ' . User::STATUS_DELETED)->one();
@@ -450,7 +502,7 @@ class UserGroupAdminMethods
             $user->auth = $auth;
             $user->email = $email;
             $user->name = $name;
-            $user->pwdEnc = (string)password_hash($plainPassword, PASSWORD_DEFAULT);
+            $user->pwdEnc = password_hash($plainPassword, PASSWORD_DEFAULT);
             $user->status = User::STATUS_CONFIRMED;
             $user->emailConfirmed = 1;
             $user->organizationIds = '';
@@ -476,6 +528,7 @@ class UserGroupAdminMethods
         string $authType,
         string $authUsername,
         ?string $password,
+        bool $forcePasswordChange,
         string $nameGiven,
         string $nameFamily,
         string $organization,
@@ -512,10 +565,17 @@ class UserGroupAdminMethods
         $user->nameGiven = $nameGiven;
         $user->name = $nameGiven . ' ' . $nameFamily;
         $user->organization = $organization;
-        $user->pwdEnc = (string)password_hash($password, PASSWORD_DEFAULT);
+        $user->pwdEnc = password_hash($password, PASSWORD_DEFAULT);
         $user->status = User::STATUS_CONFIRMED;
         $user->emailConfirmed = 1;
         $user->organizationIds = '';
+
+        $settings = $user->getSettingsObj();
+        if ($forcePasswordChange) {
+            $settings->forcePasswordChange = true;
+        }
+        $user->setSettingsObj($settings);
+
         $user->save();
 
         foreach ($userGroups as $userGroup) {

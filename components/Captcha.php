@@ -12,15 +12,21 @@ class Captcha
 {
     public static function needsCaptcha(?string $username): bool
     {
-        if (FailedLoginAttempt::needsLoginThrottling($username)) {
-            return true;
-        }
-        return AntragsgruenApp::getInstance()->loginCaptcha;
+        return match (AntragsgruenApp::getInstance()->captcha['mode']) {
+            AntragsgruenApp::CAPTCHA_MODE_ALWAYS => true,
+            AntragsgruenApp::CAPTCHA_MODE_NEVER => false,
+            default => FailedLoginAttempt::needsLoginThrottling($username),
+        };
     }
 
     public static function createInlineCaptcha(): string
     {
         $builder = new CaptchaBuilder();
+        $builder->distort = true;
+        $builder->bgColor = '#fff';
+        if (AntragsgruenApp::getInstance()->captcha['difficulty'] === AntragsgruenApp::CAPTCHA_DIFFICULTY_EASY) {
+            $builder->applyEffects = false;
+        }
         $builder->build(300, 80);
 
         $phrase = $builder->phrase;

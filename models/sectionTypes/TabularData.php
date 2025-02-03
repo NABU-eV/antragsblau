@@ -2,7 +2,9 @@
 
 namespace app\models\sectionTypes;
 
-use app\components\latex\{Content, Exporter};
+use app\components\html2pdf\Content as HtmlToPdfContent;
+use app\models\db\MotionSection;
+use app\components\latex\{Content as LatexContent, Exporter};
 use app\models\db\Consultation;
 use app\views\pdfLayouts\{IPDFLayout, IPdfWriter};
 use yii\helpers\Html;
@@ -17,8 +19,9 @@ class TabularData extends ISectionType
         $rows = static::getTabularDataRowsFromData($type->data);
         $data = json_decode($this->section->getData(), true);
 
-        $str = '<div class="form-horizontal tabularData">';
+        $str = '<div class="tabularData">';
         $str .= $this->getFormLabel();
+        $str .= $this->getHintsAfterFormLabel();
 
         foreach ($rows as $row) {
             $id = 'sections_' . $type->id . '_' . $row->rowId;
@@ -111,6 +114,11 @@ class TabularData extends ISectionType
         return !(isset($data['rows']) && count($data['rows']) > 0);
     }
 
+    public function showIfEmpty(): bool
+    {
+        return false;
+    }
+
     public function isFileUploadType(): bool
     {
         return false;
@@ -138,7 +146,7 @@ class TabularData extends ISectionType
             }
             $y     = $pdf->getY();
             $text1 = '<strong>' . Html::encode($rows[$rowId]->title) . ':</strong>';
-            $text2 = Exporter::encodeHTMLString($rows[$rowId]->formatRow($rowData));
+            $text2 = Html::encode($rows[$rowId]->formatRow($rowData));
 
             $pdf->writeHTMLCell(45, 0, 25, $y, $text1, 0, 0, false, true, '', true);
             $pdf->writeHTMLCell(111, 0, 75, null, $text2, 0, 1, false, true, '', true);
@@ -239,7 +247,7 @@ class TabularData extends ISectionType
         return '@TODO'; // @TODO
     }
 
-    public function printMotionTeX(bool $isRight, Content $content, Consultation $consultation): void
+    public function printMotionTeX(bool $isRight, LatexContent $content, Consultation $consultation): void
     {
         $data = json_decode($this->section->getData(), true);
         if (!isset($data['rows'])) {
@@ -275,13 +283,29 @@ class TabularData extends ISectionType
         }
     }
 
-    public function printAmendmentTeX(bool $isRight, Content $content): void
+    public function printAmendmentTeX(bool $isRight, LatexContent $content): void
     {
         if ($isRight) {
             $content->textRight .= '[TEST DATA]'; // @TODO
         } else {
             $content->textMain .= '[TEST DATA]'; // @TODO
         }
+    }
+
+    public function printMotionHtml2Pdf(bool $isRight, HtmlToPdfContent $content, Consultation $consultation): void
+    {
+        $html = $this->getSimple($isRight);
+
+        if ($isRight) {
+            $content->textRight .= $html;
+        } else {
+            $content->textMain .= $html;
+        }
+    }
+
+    public function printAmendmentHtml2Pdf(bool $isRight, HtmlToPdfContent $content): void
+    {
+        // TODO: Implement printAmendmentHtml2Pdf() method.
     }
 
     public function getMotionODS(): string
